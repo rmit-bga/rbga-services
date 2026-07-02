@@ -20,6 +20,7 @@ from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import rbga.api.auth as auth  # noqa: E402
+import rbga.api.ratelimit as ratelimit  # noqa: E402
 from rbga.api.main import app  # noqa: E402
 from rbga.db.database import engine  # noqa: E402
 
@@ -32,6 +33,7 @@ def fresh_db():
     and dispose/delete after so tests don't leak state into each other."""
     _DB_FILE.unlink(missing_ok=True)
     command.upgrade(Config(str(_ALEMBIC_INI)), "head")
+    ratelimit._reset()  # don't let one test's submissions throttle the next
     yield
     engine.dispose()
     _DB_FILE.unlink(missing_ok=True)

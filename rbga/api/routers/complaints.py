@@ -14,11 +14,12 @@ infrastructure and in its own DB schema/credentials.
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import require_reviewer
+from ..ratelimit import complaints_rate_limit
 from ...db.database import get_session
 from ...db.models import Complaint, ComplaintCategory, ComplaintStatus, EscalationTarget
 
@@ -27,8 +28,10 @@ router = APIRouter(prefix="/complaints", tags=["complaints"])
 
 class ComplaintIn(BaseModel):
     category: ComplaintCategory
-    body: str
-    contact: str | None = None  # optional; only if the submitter wants a reply
+    # Capped so the public endpoint can't be used to dump unbounded data.
+    body: str = Field(min_length=1, max_length=5000)
+    # Optional; only if the submitter wants a reply. Bound matches the DB column.
+    contact: str | None = Field(default=None, max_length=256)
 
 
 class ComplaintAck(BaseModel):
@@ -58,7 +61,12 @@ class ComplaintUpdate(BaseModel):
     escalated_to: EscalationTarget | None = None
 
 
-@router.post("", response_model=ComplaintAck, status_code=201)
+@router.post(
+    "",
+    response_model=ComplaintAck,
+    status_code=201,
+    dependencies=[Depends(complaints_rate_limit)],
+)
 def submit(data: ComplaintIn, db: Session = Depends(get_session)):
     complaint = Complaint(category=data.category, body=data.body, contact=data.contact)
     db.add(complaint)
