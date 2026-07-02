@@ -25,6 +25,7 @@ services:
       COMPLAINTS_SCHEMA: ${COMPLAINTS_SCHEMA:-}
       COMPLAINTS_API_TOKEN: ${COMPLAINTS_API_TOKEN}
       COMPLAINTS_RETENTION_DAYS: ${COMPLAINTS_RETENTION_DAYS:-}
+      COMPLAINTS_RATE_LIMIT: ${COMPLAINTS_RATE_LIMIT:-}
       RBGA_API_TOKEN: ${RBGA_API_TOKEN:-}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
     command: uvicorn rbga.api.main:app --host 0.0.0.0 --port 8000
@@ -38,7 +39,9 @@ services:
     depends_on:
       - db
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      # The bot uses its own least-privilege role (no complaints access, policy
+      # §9). Falls back to the main URL for local/dev where isolation is moot.
+      DATABASE_URL: ${BOT_DATABASE_URL:-${DATABASE_URL}}
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       DISCORD_KEYS_ROLE: ${DISCORD_KEYS_ROLE:-}

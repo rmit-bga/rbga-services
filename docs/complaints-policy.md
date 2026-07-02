@@ -85,24 +85,26 @@ president / rusu) when status is `escalated`.
 
 ## 8. Retention
 
-*(The retention period is to be confirmed by exec — set it as the number of days
-in `COMPLAINTS_RETENTION_DAYS`.)*
-
-- Complaints are retained for **[N days]** after they are `closed`, then
-  permanently deleted.
-- Deletion is automated: `python -m rbga.db.purge_complaints` runs on a schedule
-  (cron on the box) and deletes complaints whose `closed_at` is older than
-  `COMPLAINTS_RETENTION_DAYS`. If the variable is unset, nothing is purged
-  (fail-safe). The purge logs only a count, never complaint contents.
+- Complaints are retained for **365 days (12 months)** after they are `closed`,
+  then permanently deleted. (Set in `COMPLAINTS_RETENTION_DAYS`; the exec may
+  revise it.)
+- Deletion is automated: `python -m rbga.db.purge_complaints` runs daily (cron on
+  the box) and deletes complaints whose `closed_at` is older than the retention
+  window. If the variable is unset, nothing is purged (fail-safe). The purge logs
+  only a count, never complaint contents.
 
 ## 9. Where complaint data lives
 
-- Complaints live in their **own database schema** (`COMPLAINTS_SCHEMA`) with
-  their **own DB role**, so a leak of the bot/board-games credentials cannot
-  reach them.
+- Complaints live in their **own database schema** (`COMPLAINTS_SCHEMA`).
+- **Interim isolation (now):** the **bot** connects with its own least-privilege
+  role (`rbga_bot`) that has *no* access to the complaints schema, so a leak of
+  the bot credentials cannot reach complaints. The API still uses one role for
+  both its general tables and complaints — full per-process credential separation
+  lands with the Oracle move below.
 - Complaint data must move **off personal infrastructure** (the home Debian box)
-  to the **club-owned Oracle Cloud instance** by **[target date]**. The home
-  server is not the long-term home for complaint records.
+  to the **club-owned Oracle Cloud instance** by **[target date]**, at which
+  point complaints get fully separate credentials. The home server is not the
+  long-term home for complaint records.
 
 ## 10. Going public — the gate
 
