@@ -159,14 +159,15 @@ async def _api_put_config(committee: str | None, exec_: str | None, president: s
         return await r.json()
 
 
-async def _api_submit(category: str, body: str, contact: str | None) -> None:
+async def _api_submit(category: str, body: str, contact: str | None) -> dict:
     """Create a complaint on behalf of a Discord submitter. Sends ONLY the
     content — never the submitter's identity. The reviewer token (already on the
-    session) exempts this from the public rate limit."""
+    session) exempts this from the public rate limit. Returns the ack ({id, ...})."""
     s = await _http()
     payload = {"category": category, "body": body, "contact": contact}
     async with s.post(f"{API_BASE}/complaints", json=payload) as r:
         r.raise_for_status()
+        return await r.json()
 
 
 async def resolve_targets() -> dict:
@@ -234,6 +235,16 @@ async def _post(client: discord.Client, kind: str, symbol: str | None, c: dict, 
         user = await client.fetch_user(int(target_id))
         await user.send(embed=embed, view=view)
     return True
+
+
+async def _route(client: discord.Client, c: dict, targets: dict) -> bool:
+    """Post a new complaint to its handler tier and mark it routed. Returns False
+    (leaving it unrouted for a later retry) if the tier isn't configured yet."""
+    kind, symbol = destination_for(c["category"])
+    if await _post(client, kind, symbol, c, targets):
+        await _api_mark_routed(c["id"])
+        return True
+    return False
 
 
 async def _refresh(interaction: discord.Interaction, c: dict) -> None:
@@ -449,12 +460,19 @@ class ComplaintModal(discord.ui.Modal, title="Raise a complaint"):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         # Forward ONLY the content — never interaction.user.
-        await _api_submit(self.category, self.body.value, self.contact.value or None)
+        ack = await _api_submit(self.category, self.body.value, self.contact.value or None)
         await interaction.response.send_message(
             "Thanks — your complaint was submitted **anonymously**. The people handling it "
             "won't see who you are.",
             ephemeral=True,
         )
+        # Route it right away rather than waiting for the poll loop. If it fails
+        # (e.g. the tier isn't configured yet) the poll loop retries it later.
+        try:
+            c = {"id": ack["id"], "category": self.category, "status": "new", "escalated_to": None}
+            await _route(interaction.client, c, await resolve_targets())
+        except Exception as e:
+            print(f"[complaints] instant-route failed for #{ack['id']}: {e!r}")
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         msg = "Sorry — something went wrong submitting that. Please try again."
@@ -500,12 +518,10 @@ async def _poll_loop(client: discord.Client) -> None:
             new = [c for c in await _api_list() if c["status"] == "new" and c.get("routed_at") is None]
             if new:
                 targets = await resolve_targets()
+                # Catches web-form submissions and anything instant-routing missed
+                # (e.g. a tier that wasn't configured when it was submitted).
                 for c in new:
-                    kind, symbol = destination_for(c["category"])
-                    # Only mark routed once actually posted, so an unconfigured
-                    # tier's complaints get delivered after /complaints-setup.
-                    if await _post(client, kind, symbol, c, targets):
-                        await _api_mark_routed(c["id"])
+                    await _route(client, c, targets)
         except Exception as e:  # never let a transient API/Discord error kill the loop
             print(f"[complaints] poll error: {e!r}")
         await asyncio.sleep(POLL_SECONDS)
