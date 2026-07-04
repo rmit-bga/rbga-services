@@ -3,33 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RBGA Board Game Library</title>
-  <meta name="description" content="Browse the RMIT Board Game Association's board-game collection.">
+  <title>RMIT Board Game Association</title>
+  <meta name="description" content="Upcoming sessions and the board-game library of the RMIT Board Game Association (RBGA).">
   <link rel="stylesheet" href="styles.css">
-  <!-- Config: set this to your API's public origin (e.g. https://rbga.duckdns.org).
-       Leave as localhost for local preview. This is the ONLY thing to change. -->
-  <script>window.RBGA_API_BASE = "http://localhost:8000";</script>
+  <!-- Config. RBGA_API_BASE = the API's public origin (e.g. https://rbga.duckdns.org);
+       leave as localhost for local preview. The other two power the events section. -->
+  <script>
+    window.RBGA_API_BASE = "http://localhost:8000";
+    window.RBGA_HELLORUBRIC_SOCIETY = "10742";   // club id on campus.hellorubric.com
+    window.RBGA_DISCORD_URL = "";                // optional: Discord invite → adds a "Join" button
+  </script>
 </head>
 <body>
   <header class="site-header">
-    <h1>RBGA Board Game Library</h1>
-    <p class="tagline">The RMIT Board Game Association's collection — browse what's on the shelf.</p>
-    <div class="controls">
-      <input id="search" type="search" autocomplete="off" placeholder="Search title or publisher…" aria-label="Search by title or publisher">
-      <input id="players" type="number" min="1" inputmode="numeric" placeholder="Plays… players" aria-label="Filter by player count">
-    </div>
-    <p id="count" class="count" aria-live="polite"></p>
+    <h1>RMIT Board Game Association</h1>
+    <p class="tagline">Community board-game sessions at RMIT — and the library on our shelf.</p>
   </header>
 
   <main>
-    <p id="status" class="status">Loading the library…</p>
-    <div id="gallery" class="gallery"></div>
+    <section class="section" aria-labelledby="events-heading">
+      <h2 id="events-heading" class="section-heading">What's on</h2>
+      <p id="events-status" class="status">Loading events…</p>
+      <div id="events" class="events"></div>
+    </section>
+
+    <section class="section" aria-labelledby="library-heading">
+      <h2 id="library-heading" class="section-heading">Board game library</h2>
+      <div class="controls">
+        <input id="search" type="search" autocomplete="off" placeholder="Search title or publisher…" aria-label="Search by title or publisher">
+        <input id="players" type="number" min="1" inputmode="numeric" placeholder="Plays… players" aria-label="Filter by player count">
+      </div>
+      <p id="count" class="count" aria-live="polite"></p>
+      <p id="status" class="status">Loading the library…</p>
+      <div id="gallery" class="gallery"></div>
+    </section>
   </main>
 
   <footer class="site-footer">
-    RBGA · live from the club inventory
+    RBGA · events via hellorubric · library live from the club inventory
   </footer>
 
+  <script src="events.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
