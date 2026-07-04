@@ -1,118 +1,169 @@
 # RBGA Complaints Policy
 
-*Status: draft for exec sign-off. This document is the spec for the complaints
-module — the front-end form copy and the data model must comply with it. See
-`CLAUDE.md` for the technical constraints already in force.*
+*Status: draft for exec sign-off.*
 
 ## 1. Purpose
 
 The RMIT Board Game Association (RBGA) provides an **anonymous** channel for
 members to raise concerns about the conduct of a member, the committee, an exec,
-or the president. This policy states what we collect, what we promise submitters,
-who may read complaints, how they are escalated, and how long they are kept.
+or the president. This policy sets out what the club collects, what it promises
+people who raise a complaint, who may read complaints, how they are escalated,
+and how long they are kept. Any system the club uses to receive complaints must
+comply with this policy.
 
 ## 2. What we collect
 
-A complaint record contains **only**:
+A complaint consists only of:
 
-- **category** — who the complaint is *about* (member / committee / exec / president);
-- **body** — the complaint text;
-- **contact** — *optional*, and only if the submitter chose to leave one;
-- **created_at** — server timestamp.
+- the **category** — who the complaint is about (a member, the committee, an
+  exec, or the president);
+- the **complaint itself** — what the person writes;
+- **contact details** — optional, and only if the person chooses to leave them;
+- the **date and time** it was received.
 
-The server records **nothing identifying**: no IP address, no user agent, no
-session identifier. This is enforced in code (`rbga/api/routers/complaints.py`)
-and must stay that way.
+The club records nothing that identifies the person raising a complaint — no
+network address, no device information, no account or login identity. Complaints
+are anonymous by design.
 
-## 3. Our promise to submitters (form copy)
+## 3. What we promise people who raise a complaint
 
-The submission form must state, in plain language:
+Anyone invited to raise a complaint must be told, in plain language:
 
-- Complaints are **anonymous** — we do not record who you are.
-- The **contact field is optional**. It is the *only* way you can de-anonymise
-  yourself, so leave it blank if you want to stay anonymous. Only fill it in if
-  you want a reply.
-- Where your complaint goes (see the escalation ladder below), and that a
-  **president-level complaint is forwarded to RUSU**, an external body — if you
-  provided contact details, they may be shared with RUSU as part of that referral.
+- Complaints are **anonymous** — the club does not record who they are.
+- Leaving **contact details is optional**, and is the only way they can identify
+  themselves. They should leave it blank to stay anonymous, and fill it in only
+  if they want a reply.
+- **Where their complaint goes** — the escalation ladder in §5. A complaint about
+  the **president** is handled outside the club: the person is directed to RUSU
+  and the services in §10 rather than submitting it here, because the club has no
+  impartial way to handle it. Those external services can act on a concern and so
+  are **not anonymous**.
+- If a complaint is ever **referred to RUSU** and the person left contact
+  details, those details may be shared as part of that referral (see §6).
 
 ## 4. Who can read complaints
 
-- **Submitting is public.** Anyone can `POST` a complaint.
-- **Reading is restricted.** `GET /complaints` requires the reviewer token
-  (`COMPLAINTS_API_TOKEN`). If no token is configured, **nobody** can read
-  (fail closed).
-- Reviewer-token access is limited to the roles named in the escalation ladder
-  who are handling a given complaint. Token holders must not disclose complaint
-  contents outside the handling process described here.
+Anyone may raise a complaint. **Reading** them is governed by two principles:
 
-## 5. Escalation ladder
+- **Conflict of interest** — a complaint is never readable by the person it
+  concerns, or by a body they sit on.
+- **Need to know** — a complaint is readable only by the office-holder(s)
+  responsible for handling it, not by all office-holders.
 
-`category` records who the complaint is **about** (the subject). The **handler**
-is derived from it, and the guiding rule is **conflict of interest: a complaint
-is never handled by the person it concerns, or by a body they sit on.**
+Applying both to the escalation ladder (§5):
 
-| Complaint is about | Handled by | Escalates to (if unresolved or conflicted) |
-|--------------------|------------|--------------------------------------------|
-| A member           | Committee  | Exec                                       |
-| The committee      | Exec       | President                                  |
-| An exec            | President  | RUSU                                       |
-| The president      | **RUSU directly** (skip the internal chain) | — |
+| Complaint is about | Read by (its handler) | Also readable once escalated |
+|--------------------|-----------------------|------------------------------|
+| A member           | the committee         | the exec                     |
+| The committee      | the exec              | the president                |
+| An exec            | **the president only**| (referred externally to RUSU)|
+| The president      | *no one internal — directed to RUSU, not stored by the club* | — |
+
+Reading is **closed by default**: if no authorised handler exists, no one can
+read. Those who can read a complaint **must not disclose its contents** outside
+the handling process described here.
+
+**This separation must be enforced by the system.** A single shared credential
+that exposes every complaint to everyone who holds it does *not* satisfy this
+policy — read access must be limited per handler tier, so that (for example) a
+complaint about an exec is readable only by the president.
+
+## 5. How complaints are escalated
+
+The category records who a complaint is about. The office-holder who handles it
+follows from that, under one guiding rule: **a complaint is never handled by the
+person it concerns, or by a body they sit on** (conflict of interest).
+
+| Complaint is about | Handled by | Escalates to (if unresolved or the handler is conflicted) |
+|--------------------|------------|-----------------------------------------------------------|
+| A member           | Committee  | Exec                                                      |
+| The committee      | Exec       | President                                                 |
+| An exec            | President  | RUSU                                                      |
+| The president      | **RUSU directly** (no impartial internal handler exists)  | — |
 
 RUSU (RMIT University Student Union) is the **external backstop** in two cases:
 
-1. **President-level complaints** — there is no impartial internal handler above
-   the president, so these go straight to RUSU.
-2. **Anything the internal chain cannot or will not resolve.**
+1. a complaint concerns the **president** — there is no impartial internal
+   handler above them; and
+2. anything the internal chain **cannot or will not resolve**.
 
-## 6. External disclosure to RUSU
+Because there is no impartial internal handler for a complaint **about the
+president**, the club does not take or store these through its own channel — the
+person is directed to RUSU and the support services in §10 (see §3 and §4). This
+also means such a complaint cannot be made anonymously through the club, since the
+external services need to be able to act on it.
 
-Escalation to RUSU is a disclosure to a party outside the club and is the most
-privacy-sensitive step in this process. When a complaint is referred to RUSU:
+## 6. Referring a complaint to RUSU
 
-- Only the **category** and **body** are forwarded by default.
-- The **contact** field is forwarded **only if the submitter provided one**, and
-  the form must have told them this could happen (see §3).
-- The referral, and what was forwarded, is recorded on the complaint
-  (`status = escalated`, `escalated_to = rusu`).
+Referring a complaint to RUSU means disclosing it to a body outside the club, and
+is the most sensitive step in this process. On any such referral:
 
-## 7. Complaint lifecycle
+- only the **category** and the **complaint text** are shared by default;
+- **contact details are shared only** if the person chose to provide them, and
+  only where they were told this could happen (see §3);
+- the club keeps a record that the referral was made and what was shared.
 
-Each complaint carries a **status**: `new → acknowledged → escalated → closed`
-(escalated is optional; not every complaint is escalated). The `escalated_to`
-field records the handler a complaint was escalated to (committee / exec /
-president / rusu) when status is `escalated`.
+## 7. The life of a complaint
+
+Each complaint moves through a simple lifecycle: **received → acknowledged →
+(escalated, if needed) → closed**. The club records which stage a complaint is
+at, and, where it was escalated, who it was escalated to.
 
 ## 8. Retention
 
-- Complaints are retained for **365 days (12 months)** after they are `closed`,
-  then permanently deleted. (Set in `COMPLAINTS_RETENTION_DAYS`; the exec may
-  revise it.)
-- Deletion is automated: `python -m rbga.db.purge_complaints` runs daily (cron on
-  the box) and deletes complaints whose `closed_at` is older than the retention
-  window. If the variable is unset, nothing is purged (fail-safe). The purge logs
-  only a count, never complaint contents.
+- Complaints are kept for **365 days (12 months)** after they are closed, then
+  permanently deleted.
+- Deletion is automatic, and the record of a deletion never includes the
+  complaint's contents.
+- The exec may revise the retention period.
 
-## 9. Where complaint data lives
+## 9. Where complaint data is kept
 
-- Complaints live in their **own database schema** (`COMPLAINTS_SCHEMA`).
-- **Interim isolation (now):** the **bot** connects with its own least-privilege
-  role (`rbga_bot`) that has *no* access to the complaints schema, so a leak of
-  the bot credentials cannot reach complaints. The API still uses one role for
-  both its general tables and complaints — full per-process credential separation
-  lands with the Oracle move below.
-- Complaint data must move **off personal infrastructure** (the home Debian box)
-  to the **club-owned Oracle Cloud instance** by **[target date]**, at which
-  point complaints get fully separate credentials. The home server is not the
-  long-term home for complaint records.
+- Complaints are **stored separately** from the club's other data, so that access
+  to the club's general systems does not, by itself, grant access to complaints.
+- Complaint data should be held on **club-owned infrastructure**, not on any
+  individual's personal equipment. Where an interim arrangement falls short of
+  this, moving to club-owned infrastructure is a priority.
 
-## 10. Going public — the gate
+## 10. Support and other ways to raise a concern
 
-This module may go public only once **all** of the following are true:
+This anonymous channel is for concerns about **conduct within the club**. It is
+not an emergency service, and not a substitute for professional support or RMIT's
+own processes. Depending on the situation the services below may be more
+appropriate, and people are always free to use them **instead of, or as well as,**
+this channel:
 
-1. This policy is signed off by the exec.
-2. The submission form shows the §3 promises and the escalation/RUSU disclosure.
-3. A retention purge job exists (§8).
-4. Complaint data is on the club-owned Oracle instance with its own DB role (§9).
+- **In an emergency, or if someone is in immediate danger — call 000.** For
+  incidents on an RMIT campus, contact RMIT Security.
+- **[RUSU Student Rights](https://rusu.rmit.edu.au/studentrights/)** — free,
+  confidential and *independent* advice and advocacy for students, including
+  complaints, unfair treatment, misconduct and bullying (03 9925 1842,
+  student.rights@rmit.edu.au). Being independent of RMIT, it is a good option when
+  a concern involves the club's own office-holders.
+- **[RUSU Compass](https://rusu.rmit.edu.au/compass/)** — free drop-in
+  information, support and referrals, staffed by trained student volunteers, at
+  the City, Carlton, Bundoora and Brunswick campuses.
+- **[RMIT Safer Community](https://www.rmit.edu.au/about/our-locations-and-facilities/facilities/safety-security/safer-community)**
+  — RMIT's service for reporting concerning, threatening or inappropriate
+  behaviour, including bullying, discrimination, sexual harassment, harm and
+  violence.
+- **[RMIT Counselling](https://www.rmit.edu.au/students/support-services/health-safety-wellbeing/mental-health-counselling)**
+  — free, confidential short-term counselling and mental-health support for
+  students.
+- **[RMIT student complaints](https://www.rmit.edu.au/students/support-services/feedback-complaints-appeals/complaints)**
+  — the University's formal process for complaints about RMIT itself, as distinct
+  from conduct within the club.
 
-The backend endpoints existing is **not** sufficient to go live.
+## 11. Adoption and going live
+
+This policy takes effect when it is **adopted by the exec**. A complaints channel
+may be opened to members only once:
+
+1. this policy has been adopted by the exec;
+2. the people raising complaints are shown the promises and disclosures in §3;
+3. complaints are automatically deleted per the retention period in §8; and
+4. complaint data is held on club-owned infrastructure, separated from the club's
+   other systems (§9).
+
+Having the technical capability to receive complaints is not, by itself,
+sufficient to open the channel.
