@@ -1,3 +1,6 @@
+# Local-only Claude Code guidance (contains private server details).
+CLAUDE.md
+
 __pycache__/
 *.py[cod]
 .venv/

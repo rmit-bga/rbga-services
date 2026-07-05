@@ -10,7 +10,7 @@ never want an unconfigured deploy silently deleting complaint records. The
 retention period itself is an exec decision, kept in config not code.
 
 Privacy: this prints only a COUNT, never complaint contents or contact details
-(see the no-de-anonymising-logs rule in CLAUDE.md).
+(see the no-de-anonymising rule in docs/complaints-policy.md).
 """
 import os
 from datetime import datetime, timedelta

@@ -17,7 +17,7 @@ isolated complaints schema. This module is only the **handling** surface:
 
 The bot reaches complaints ONLY through the API (with the reviewer token) — it has
 no direct complaints DB access, preserving the credential isolation. See
-CLAUDE.md and docs/complaints-policy.md.
+docs/complaints-policy.md (and docs/deploy.md for the DB role setup).
 """
 import asyncio
 import os

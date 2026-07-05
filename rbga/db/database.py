@@ -1,7 +1,7 @@
 """Shared database layer — one engine/session used by both the API and the bot.
 
 Reads DATABASE_URL from the environment so the same code runs against local
-SQLite in dev and Postgres on the server (see CLAUDE.md). Nothing here is
+SQLite in dev and Postgres on the server. Nothing here is
 service-specific: the API modules and the Discord bot both import from here.
 """
 import os

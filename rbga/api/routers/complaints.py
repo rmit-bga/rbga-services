@@ -13,8 +13,9 @@ Access levels on purpose:
   * POST  /complaints/{id}/routed — RESTRICTED. Bookkeeping: the Discord handler
     marks a complaint once it has been posted to its handler tier.
 
-See CLAUDE.md for why the complaints data lives in its own DB schema/credentials
-and is handled through Discord (metadata only; the body stays here).
+See docs/complaints-policy.md (§9) for why the complaints data lives in its own
+DB schema/credentials and is handled through Discord (metadata only; the body
+stays here).
 """
 from datetime import datetime
 

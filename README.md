@@ -1,8 +1,9 @@
 # RBGA Services
 
 Services for the RMIT Board Game Association, built as **one small app, not a
-pile of microservices** (see `CLAUDE.md` for the reasoning). Everything lives in
-the `rbga` Python package and shares one Postgres database:
+pile of microservices** — the club's tools are low-volume and maintained by
+rotating student execs, so handover beats scaling. Everything lives in the
+`rbga` Python package and shares one Postgres database:
 
 | Feature | Where | Notes |
 |---------|-------|-------|
@@ -73,7 +74,8 @@ Dockerfile on a hosted runner, then the `deploy` job runs on a **self-hosted run
 on the box**, does `git reset --hard origin/main` in `~/servers/rbga`, rebuilds, and
 health-checks `http://localhost:30010/health`. The deploy runs
 `alembic upgrade head` before starting services. See `.github/workflows/ci-cd.yml`
-and `CLAUDE.md` for the server details (cloudflared ingress, `.env`).
+and `docs/deploy.md` for the deploy pattern (public HTTPS options, `.env`,
+bot DB role, retention cron).
 
 ## Migrations
 

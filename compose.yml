@@ -1,6 +1,7 @@
 # One image, two processes (api + bot), one Postgres. This is the whole
-# "modular monolith" — see CLAUDE.md. Follows the ~/servers/<name>/ pattern
-# used on the Debian box: no host port on the DB, cloudflared fronts the API.
+# "modular monolith" — see README.md. Follows the ~/servers/<name>/ pattern
+# used on the deploy host (docs/deploy.md): no host port on the DB, a reverse
+# proxy or tunnel fronts the API.
 services:
   db:
     image: postgres:16-alpine
