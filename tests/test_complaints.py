@@ -53,7 +53,7 @@ def test_closing_sets_closed_at_and_reopening_clears_it(client, reviewer_token):
 
 def test_president_submission_is_rejected(client):
     # No impartial internal handler exists above the president, so the club does
-    # not accept these — the submitter is redirected to RUSU (policy §5).
+    # not accept these; the submitter is redirected to RUSU (policy §5).
     r = client.post("/complaints", json={"category": "president", "body": "about the pres"})
     assert r.status_code == 400
     assert "RUSU" in r.json()["detail"]

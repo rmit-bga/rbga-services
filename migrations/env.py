@@ -1,4 +1,4 @@
-"""Alembic environment — wired to the app's own Base/metadata and DATABASE_URL.
+"""Alembic environment, wired to the app's own Base/metadata and DATABASE_URL.
 
 Online-only (we always have a live connection in dev and deploy). Uses batch mode
 so ALTERs work on SQLite dev, and includes schemas so the isolated `complaints`
@@ -9,7 +9,7 @@ from logging.config import fileConfig
 from alembic import context
 
 from rbga.db.database import DATABASE_URL, engine
-from rbga.db.models import Base  # noqa: F401 — imports all models onto Base.metadata
+from rbga.db.models import Base  # noqa: F401 (imports all models onto Base.metadata)
 
 config = context.config
 if config.config_file_name is not None:

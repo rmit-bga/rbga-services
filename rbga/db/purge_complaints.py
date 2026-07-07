@@ -5,7 +5,7 @@ COMPLAINTS_RETENTION_DAYS. Meant to run on a schedule (cron on the box):
 
     docker compose run --rm api python -m rbga.db.purge_complaints
 
-Fail-safe: if COMPLAINTS_RETENTION_DAYS is unset/blank, this does NOTHING — we
+Fail-safe: if COMPLAINTS_RETENTION_DAYS is unset/blank, this does NOTHING; we
 never want an unconfigured deploy silently deleting complaint records. The
 retention period itself is an exec decision, kept in config not code.
 
@@ -23,7 +23,7 @@ from .models import Complaint, ComplaintStatus
 
 def purge(session, retention_days: int) -> int:
     """Delete complaints closed more than `retention_days` ago. Returns the row
-    count deleted. Only touches CLOSED complaints — open/escalated ones are never
+    count deleted. Only touches CLOSED complaints; open/escalated ones are never
     purged regardless of age."""
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     result = session.execute(

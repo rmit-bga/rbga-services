@@ -22,7 +22,7 @@ BGG_API_TOKEN = os.environ.get("BGG_API_TOKEN")
 
 
 class BGGNotConfigured(RuntimeError):
-    """Raised when no BGG_API_TOKEN is set — BGG now requires one."""
+    """Raised when no BGG_API_TOKEN is set; BGG now requires one."""
 
 
 def extract_bgg_id(url: str) -> int | None:

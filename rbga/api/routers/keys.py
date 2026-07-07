@@ -1,4 +1,4 @@
-"""Key-tracker endpoints — the REST version of Owen's original CLI commands."""
+"""Key-tracker endpoints: the REST version of Owen's original CLI commands."""
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException

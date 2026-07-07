@@ -1,5 +1,5 @@
 # One image, two processes (api + bot), one Postgres. This is the whole
-# "modular monolith" — see README.md. Follows the ~/servers/<name>/ pattern
+# "modular monolith"; see README.md. Follows the ~/servers/<name>/ pattern
 # used on the deploy host (docs/deploy.md): no host port on the DB, a reverse
 # proxy or tunnel fronts the API.
 services:
@@ -13,7 +13,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
-    # deliberately no host port — only api/bot on this network reach it
+    # deliberately no host port: only api/bot on this network reach it
 
   api:
     build: .
@@ -48,7 +48,7 @@ services:
       DISCORD_KEYS_ROLE: ${DISCORD_KEYS_ROLE:-}
       BGG_API_TOKEN: ${BGG_API_TOKEN:-}
       # Complaints handling: the bot reaches complaints via the API (reviewer
-      # token), never the DB — so its restricted DB role is unchanged.
+      # token), never the DB, so its restricted DB role is unchanged.
       RBGA_API_BASE_URL: ${RBGA_API_BASE_URL:-http://api:8000}
       COMPLAINTS_API_TOKEN: ${COMPLAINTS_API_TOKEN:-}
       # Routing targets are normally set at runtime via /complaints-setup; these
@@ -62,7 +62,7 @@ services:
     command: python -m rbga.bot
 
   # Optional reverse proxy with automatic HTTPS (Let's Encrypt), for hosting the
-  # API on a box with a public IP + a domain — e.g. the Oracle move with a free
+  # API on a box with a public IP + a domain, e.g. the Oracle move with a free
   # DuckDNS subdomain. NOT started by default (the home box uses cloudflared on
   # :30010 instead); opt in with `docker compose --profile caddy up -d`.
   # Needs CADDY_DOMAIN set to a name that resolves to this host, and ports 80/443
@@ -81,5 +81,5 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./data/caddy:/data      # issued certs — persist so they survive restarts
+      - ./data/caddy:/data      # issued certs; persist so they survive restarts
       - ./data/caddy-config:/config

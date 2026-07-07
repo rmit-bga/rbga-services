@@ -1,11 +1,11 @@
-"""Discord CRUD for the board-game inventory — the `/game` command group.
+"""Discord CRUD for the board-game inventory: the `/game` command group.
 
 Writes the same `board_games` table the REST API serves (rbga/api/routers/
 boardgames.py), via the shared db layer. List/info are open to everyone; add/edit/
 remove are gated to the exec role (see rbga/bot/common.py).
 
 Titles aren't unique (e.g. Polyhedral Dice Set ×4), so info/edit/remove take a
-numeric id, disambiguated for the user by autocomplete that shows "Title — owner".
+numeric id, disambiguated for the user by autocomplete that shows "Title (owner)".
 """
 from typing import Literal
 
@@ -42,7 +42,7 @@ async def game_autocomplete(
     rows = await _in_thread(query)
     choices = []
     for gid, title, owner in rows:
-        label = f"{title} — {owner}" if owner else title
+        label = f"{title} ({owner})" if owner else title
         choices.append(app_commands.Choice(name=label[:100], value=gid))
     return choices
 
@@ -102,7 +102,7 @@ async def game_list(
         if g.owner:
             bits.append(f"({g.owner})")
         if g.condition:
-            bits.append(f"— {g.condition}")
+            bits.append(f"[{g.condition}]")
         line = f"`#{g.id}` " + " ".join(bits)
         if sum(len(x) + 1 for x in lines) + len(line) > MAX_LIST_CHARS:
             break
@@ -111,7 +111,7 @@ async def game_list(
 
     header = f"**{len(games)} game(s)**"
     if shown < len(games):
-        header += f" — showing first {shown}, refine with filters"
+        header += f" (showing first {shown}; refine with filters)"
     await interaction.followup.send(header + "\n" + "\n".join(lines))
 
 
@@ -156,9 +156,9 @@ async def game_info(interaction: discord.Interaction, game: int):
 
 # --- mutations (exec role only) ---------------------------------------------
 
-@game.command(name="add", description="Add a game — paste a BGG link to auto-fill the details")
+@game.command(name="add", description="Add a game (paste a BGG link to auto-fill the details)")
 @app_commands.describe(
-    bgg_link="BoardGameGeek URL — pulls title, publisher, players, and image",
+    bgg_link="BoardGameGeek URL; pulls title, publisher, players, and image",
     condition="Physical condition",
     price="Purchase value in dollars",
     title="The game's title (optional if a BGG link is given)",
@@ -210,7 +210,7 @@ async def game_add(
             data = None
         if data is None:
             await interaction.followup.send(
-                f"Couldn't fetch BGG id {bgg_id} — it may not exist, or BGG is busy. "
+                f"Couldn't fetch BGG id {bgg_id}. It may not exist, or BGG is busy. "
                 "Try again, or add the game manually with a title.",
                 ephemeral=True,
             )
@@ -297,7 +297,7 @@ async def game_edit(
         if v is not None
     }
     if not changes:
-        await interaction.followup.send("Nothing to change — set at least one field.", ephemeral=True)
+        await interaction.followup.send("Nothing to change; set at least one field.", ephemeral=True)
         return
 
     def mutate() -> str | None:

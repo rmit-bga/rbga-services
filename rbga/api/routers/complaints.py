@@ -1,16 +1,16 @@
 """Anonymous complaints endpoints.
 
 Access levels on purpose:
-  * POST  /complaints          — PUBLIC. Anyone can submit. We record only what the
+  * POST  /complaints          is PUBLIC. Anyone can submit. We record only what the
     form sends; the server adds NOTHING identifying (no IP, no user agent).
     Complaints *about the president* are rejected here and redirected to RUSU
-    (policy §5 — no impartial internal handler exists above the president).
-  * GET   /complaints          — RESTRICTED. Requires the reviewer token.
-  * GET   /complaints/{id}      — RESTRICTED. Single complaint (the Discord handler
+    (policy §5: no impartial internal handler exists above the president).
+  * GET   /complaints          is RESTRICTED. Requires the reviewer token.
+  * GET   /complaints/{id}      is RESTRICTED. Single complaint (the Discord handler
     fetches the body on demand to show it ephemerally).
-  * PATCH /complaints/{id}      — RESTRICTED. Acknowledge / escalate / close per
+  * PATCH /complaints/{id}      is RESTRICTED. Acknowledge / escalate / close per
     the ladder in docs/complaints-policy.md.
-  * POST  /complaints/{id}/routed — RESTRICTED. Bookkeeping: the Discord handler
+  * POST  /complaints/{id}/routed is RESTRICTED. Bookkeeping: the Discord handler
     marks a complaint once it has been posted to its handler tier.
 
 See docs/complaints-policy.md (§9) for why the complaints data lives in its own
@@ -47,7 +47,7 @@ class ComplaintIn(BaseModel):
 
 
 class ComplaintAck(BaseModel):
-    """Minimal acknowledgement — we don't echo the content back."""
+    """Minimal acknowledgement; we don't echo the content back."""
 
     id: int
     created_at: datetime
@@ -75,7 +75,7 @@ class ComplaintUpdate(BaseModel):
 
 
 class ComplaintsConfigIn(BaseModel):
-    """Where complaints are routed in Discord — set by the /complaints-setup
+    """Where complaints are routed in Discord, set by the /complaints-setup
     wizard. All optional; a partial save leaves the others as they were."""
 
     committee_channel_id: str | None = None
@@ -95,7 +95,7 @@ class ComplaintsConfigOut(ComplaintsConfigIn):
 )
 def submit(data: ComplaintIn, db: Session = Depends(get_session)):
     # A complaint *about the president* has no impartial internal handler, so the
-    # club does not take or store it — the submitter is directed to RUSU (§5).
+    # club does not take or store it; the submitter is directed to RUSU (§5).
     if data.category == ComplaintCategory.president:
         raise HTTPException(
             400,
@@ -167,7 +167,7 @@ def get_complaint(complaint_id: int, db: Session = Depends(get_session)):
 )
 def mark_routed(complaint_id: int, db: Session = Depends(get_session)):
     """Stamp when the Discord handler has posted this complaint to its tier, so
-    the poll loop doesn't post it again. Idempotent — re-marking is a no-op."""
+    the poll loop doesn't post it again. Idempotent: re-marking is a no-op."""
     complaint = db.get(Complaint, complaint_id)
     if not complaint:
         raise HTTPException(404, "No such complaint")

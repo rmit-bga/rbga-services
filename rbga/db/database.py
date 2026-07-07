@@ -1,4 +1,4 @@
-"""Shared database layer — one engine/session used by both the API and the bot.
+"""Shared database layer: one engine/session used by both the API and the bot.
 
 Reads DATABASE_URL from the environment so the same code runs against local
 SQLite in dev and Postgres on the server. Nothing here is
@@ -28,7 +28,7 @@ class Base(DeclarativeBase):
 
 
 def get_session():
-    """FastAPI dependency — yields a session and always closes it."""
+    """FastAPI dependency: yields a session and always closes it."""
     db = SessionLocal()
     try:
         yield db

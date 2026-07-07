@@ -4,18 +4,18 @@ Complaints are *submitted* anonymously through the web API and stored in the
 isolated complaints schema. This module is only the **handling** surface:
 
   * A poll loop asks the API for new complaints and posts a **metadata-only**
-    notification (id, category, status — never the body) to the Discord
+    notification (id, category, status, never the body) to the Discord
     destination for that complaint's handler tier:
         member    -> committee channel
         committee -> exec channel
         exec      -> president DM
     (Complaints about the president are rejected at submission and redirected to
     RUSU, so they never reach here.)
-  * Handlers act via buttons — View / Acknowledge / Escalate / Close. *View*
+  * Handlers act via buttons: View / Acknowledge / Escalate / Close. *View*
     fetches the body and shows it **ephemerally** (only to the clicker), so the
     text never lands in a Discord channel. The others drive the API.
 
-The bot reaches complaints ONLY through the API (with the reviewer token) — it has
+The bot reaches complaints ONLY through the API (with the reviewer token); it has
 no direct complaints DB access, preserving the credential isolation. See
 docs/complaints-policy.md (and docs/deploy.md for the DB role setup).
 """
@@ -40,8 +40,8 @@ POLL_SECONDS = int(os.environ.get("COMPLAINTS_POLL_SECONDS", "60"))
 ADMIN_ROLE = os.environ.get("COMPLAINTS_ADMIN_ROLE") or os.environ.get("DISCORD_KEYS_ROLE")
 
 RUSU_LINKS = (
-    "• RUSU Student Rights — https://rusu.rmit.edu.au/studentrights/\n"
-    "• RMIT Safer Community — "
+    "• RUSU Student Rights: https://rusu.rmit.edu.au/studentrights/\n"
+    "• RMIT Safer Community: "
     "https://www.rmit.edu.au/about/our-locations-and-facilities/facilities/safety-security/safer-community"
 )
 
@@ -73,7 +73,7 @@ def next_escalation_target(category: str) -> str:
 
 
 def is_submittable(category: str) -> bool:
-    """False for 'president' — those are directed to RUSU, not taken into the
+    """False for 'president': those are directed to RUSU, not taken into the
     club's system (policy §5)."""
     return category in ("member", "committee", "exec")
 
@@ -161,7 +161,7 @@ async def _api_put_config(committee: str | None, exec_: str | None, president: s
 
 async def _api_submit(category: str, body: str, contact: str | None) -> dict:
     """Create a complaint on behalf of a Discord submitter. Sends ONLY the
-    content — never the submitter's identity. The reviewer token (already on the
+    content, never the submitter's identity. The reviewer token (already on the
     session) exempts this from the public rate limit. Returns the ack ({id, ...})."""
     s = await _http()
     payload = {"category": category, "body": body, "contact": contact}
@@ -209,7 +209,7 @@ _ID_RE = re.compile(r"#(\d+)")
 
 
 def _embed(c: dict) -> discord.Embed:
-    """Metadata-only embed — deliberately never includes the body."""
+    """Metadata-only embed that deliberately never includes the body."""
     e = discord.Embed(
         title=f"Complaint #{c['id']}",
         colour=_STATUS_COLOUR.get(c["status"], discord.Colour.greyple()),
@@ -218,7 +218,7 @@ def _embed(c: dict) -> discord.Embed:
     e.add_field(name="Status", value=c["status"])
     if c.get("escalated_to"):
         e.add_field(name="Escalated to", value=c["escalated_to"])
-    e.set_footer(text="Body hidden — click View (only you will see it).")
+    e.set_footer(text="Body hidden. Click View (only you will see it).")
     return e
 
 
@@ -232,7 +232,7 @@ async def _post(client: discord.Client, kind: str, symbol: str | None, c: dict, 
     target_id = _target_id(kind, symbol, targets)
     if not target_id:
         who = symbol or kind
-        print(f"[complaints] no {who} destination set — run /complaints-setup to route complaint #{c['id']}.")
+        print(f"[complaints] no {who} destination set; run /complaints-setup to route complaint #{c['id']}.")
         return False
 
     embed, view = _embed(c), ComplaintView()
@@ -262,7 +262,7 @@ async def _refresh(interaction: discord.Interaction, c: dict) -> None:
 
 
 async def _send_body(interaction: discord.Interaction, cid: int, c: dict) -> None:
-    header = f"**Complaint #{cid}** — about {c['category']}\n\n"
+    header = f"**Complaint #{cid}** (about {c['category']})\n\n"
     text = header + (c.get("body") or "(empty)")
     if c.get("contact"):
         text += f"\n\n**Contact left by submitter:** {c['contact']}"
@@ -302,7 +302,7 @@ async def _do_escalate(interaction: discord.Interaction) -> None:
         )
     else:
         posted = await _post(interaction.client, kind, symbol, c, await resolve_targets())
-        tail = "" if posted else f" (no {target} destination set yet — run /complaints-setup)"
+        tail = "" if posted else f" (no {target} destination set yet; run /complaints-setup)"
         await interaction.followup.send(f"Escalated complaint #{cid} to the {target}.{tail}", ephemeral=True)
 
 
@@ -351,7 +351,7 @@ class _CommitteeSelect(discord.ui.ChannelSelect):
     def __init__(self, current: str | None) -> None:
         super().__init__(
             channel_types=[discord.ChannelType.text],
-            placeholder="Committee channel — member complaints",
+            placeholder="Committee channel (member complaints)",
             min_values=1, max_values=1, row=0,
             default_values=_chan_default(current),
         )
@@ -365,7 +365,7 @@ class _ExecSelect(discord.ui.ChannelSelect):
     def __init__(self, current: str | None) -> None:
         super().__init__(
             channel_types=[discord.ChannelType.text],
-            placeholder="Exec channel — committee complaints",
+            placeholder="Exec channel (committee complaints)",
             min_values=1, max_values=1, row=1,
             default_values=_chan_default(current),
         )
@@ -378,7 +378,7 @@ class _ExecSelect(discord.ui.ChannelSelect):
 class _PresidentSelect(discord.ui.UserSelect):
     def __init__(self, current: str | None) -> None:
         super().__init__(
-            placeholder="President — receives exec complaints by DM",
+            placeholder="President (receives exec complaints by DM)",
             min_values=1, max_values=1, row=2,
             default_values=_user_default(current),
         )
@@ -414,7 +414,7 @@ class SetupView(discord.ui.View):
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, row=3)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.edit_message(content="Cancelled — no changes made.", view=None)
+        await interaction.response.edit_message(content="Cancelled. No changes made.", view=None)
 
 
 @app_commands.command(
@@ -439,7 +439,7 @@ async def complaints_setup(interaction: discord.Interaction) -> None:
         )
         return
     await interaction.response.send_message(
-        "**Complaints setup** — choose where each tier's complaints go, then **Save**.",
+        "**Complaints setup**: choose where each tier's complaints go, then **Save**.",
         view=SetupView(cfg),
         ephemeral=True,
     )
@@ -459,7 +459,7 @@ class ComplaintModal(discord.ui.Modal, title="Raise a complaint"):
         style=discord.TextStyle.short,
         required=False,
         max_length=256,
-        placeholder="Only if you want a reply — leaving this can de-anonymise you.",
+        placeholder="Only if you want a reply. Leaving this can de-anonymise you.",
     )
 
     def __init__(self, category: str) -> None:
@@ -467,10 +467,10 @@ class ComplaintModal(discord.ui.Modal, title="Raise a complaint"):
         self.category = category
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        # Forward ONLY the content — never interaction.user.
+        # Forward ONLY the content, never interaction.user.
         ack = await _api_submit(self.category, self.body.value, self.contact.value or None)
         await interaction.response.send_message(
-            "Thanks — your complaint was submitted **anonymously**. The people handling it "
+            "Thanks! Your complaint was submitted **anonymously**. The people handling it "
             "won't see who you are.",
             ephemeral=True,
         )
@@ -483,7 +483,7 @@ class ComplaintModal(discord.ui.Modal, title="Raise a complaint"):
             print(f"[complaints] instant-route failed for #{ack['id']}: {e!r}")
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
-        msg = "Sorry — something went wrong submitting that. Please try again."
+        msg = "Sorry, something went wrong submitting that. Please try again."
         if interaction.response.is_done():
             await interaction.followup.send(msg, ephemeral=True)
         else:
@@ -492,7 +492,7 @@ class ComplaintModal(discord.ui.Modal, title="Raise a complaint"):
 
 
 @app_commands.command(
-    name="complain", description="Raise a complaint — anonymous; handlers won't see who you are"
+    name="complain", description="Raise a complaint (anonymous; handlers won't see who you are)"
 )
 @app_commands.guild_only()
 @app_commands.describe(about="Who the complaint is about")
@@ -512,7 +512,7 @@ async def complain(interaction: discord.Interaction, about: app_commands.Choice[
             ephemeral=True,
         )
         return
-    # Don't take a complaint that has nowhere to go — tell the submitter routing
+    # Don't take a complaint that has nowhere to go; tell the submitter routing
     # hasn't been configured instead of letting it sit unrouted in the DB.
     try:
         ready = tier_ready(about.value, await resolve_targets())
@@ -562,7 +562,7 @@ def start_polling(client: discord.Client) -> None:
     if not _configured():
         print(
             "[complaints] not configured (need RBGA_API_BASE_URL and COMPLAINTS_API_TOKEN) "
-            "— Discord handling disabled. Set routing targets with /complaints-setup."
+            "so Discord handling is disabled. Set routing targets with /complaints-setup."
         )
         return
     _polling = True

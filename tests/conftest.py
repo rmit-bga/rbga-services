@@ -41,7 +41,7 @@ def fresh_db():
 
 @pytest.fixture
 def client():
-    # No `with` — we don't want the app lifespan (it would re-run migrations);
+    # No `with`: we don't want the app lifespan (it would re-run migrations);
     # the fresh_db fixture owns schema setup.
     return TestClient(app)
 

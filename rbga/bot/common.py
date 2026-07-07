@@ -22,7 +22,7 @@ async def _in_thread(fn):
 def require_exec_role(interaction: discord.Interaction) -> bool:
     """app_commands check: caller must hold the exec role named by DISCORD_KEYS_ROLE.
 
-    Fails closed — no role configured, or invoked outside a guild, means denied.
+    Fails closed: no role configured, or invoked outside a guild, means denied.
     """
     if not EXEC_ROLE or not isinstance(interaction.user, discord.Member):
         return False

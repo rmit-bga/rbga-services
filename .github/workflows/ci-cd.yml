@@ -45,7 +45,7 @@ jobs:
             git remote add origin "https://github.com/${{ github.repository }}.git"
           fi
           # Authenticate the fetch with the job's ephemeral token (not persisted
-          # to .git/config — passed per-command via -c).
+          # to .git/config; passed per-command via -c).
           AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $AUTH" fetch --all --prune
           git reset --hard origin/main

@@ -15,31 +15,31 @@ comply with this policy.
 
 A complaint consists only of:
 
-- the **category** — who the complaint is about (a member, the committee, an
+- the **category**: who the complaint is about (a member, the committee, an
   exec, or the president);
-- the **complaint itself** — what the person writes;
-- **contact details** — optional, and only if the person chooses to leave them;
+- the **complaint itself**: what the person writes;
+- **contact details**: optional, and only if the person chooses to leave them;
 - the **date and time** it was received.
 
-The club records nothing that identifies the person raising a complaint — no
-network address, no device information, no account or login identity — and the
+The club records nothing that identifies the person raising a complaint (no
+network address, no device information, no account or login identity), and the
 people who handle a complaint never see who submitted it.
 
 ## 3. What we promise people who raise a complaint
 
 Anyone invited to raise a complaint must be told, in plain language:
 
-- Complaints are **anonymous** — the club does not record who they are, and the
+- Complaints are **anonymous**: the club does not record who they are, and the
   people handling a complaint never see who submitted it.
-- **How to submit** — complaints can be raised through **Discord** (the
+- **How to submit**: complaints can be raised through **Discord** (the
   `/complain` command) and, in future, an **anonymous web form**. Either way the
   club stores nothing identifying. Note that submitting through Discord uses your
-  Discord account, so it is *not quite as absolute* as the anonymous web form —
+  Discord account, so it is *not quite as absolute* as the anonymous web form:
   your account processes the request, even though the club never records it.
 - Leaving **contact details is optional**, and is the only thing that could
   identify them. They should leave it blank to stay anonymous, and fill it in only
   if they want a reply.
-- **Where their complaint goes** — the escalation ladder in §5. A complaint about
+- **Where their complaint goes**: the escalation ladder in §5. A complaint about
   the **president** is handled outside the club: the person is directed to RUSU
   and the services in §10 rather than submitting it here, because the club has no
   impartial way to handle it. Those external services can act on a concern and so
@@ -51,9 +51,9 @@ Anyone invited to raise a complaint must be told, in plain language:
 
 Anyone may raise a complaint. **Reading** them is governed by two principles:
 
-- **Conflict of interest** — a complaint is never readable by the person it
+- **Conflict of interest**: a complaint is never readable by the person it
   concerns, or by a body they sit on.
-- **Need to know** — a complaint is readable only by the office-holder(s)
+- **Need to know**: a complaint is readable only by the office-holder(s)
   responsible for handling it, not by all office-holders.
 
 Applying both to the escalation ladder (§5):
@@ -63,16 +63,16 @@ Applying both to the escalation ladder (§5):
 | A member           | the committee         | the exec                     |
 | The committee      | the exec              | the president                |
 | An exec            | **the president only**| (referred externally to RUSU)|
-| The president      | *no one internal — directed to RUSU, not stored by the club* | — |
+| The president      | *no one internal; directed to RUSU, not stored by the club* | *(none)* |
 
 Reading is **closed by default**: if no authorised handler exists, no one can
 read. Those who can read a complaint **must not disclose its contents** outside
 the handling process described here.
 
 **This separation is enforced by routing.** Each complaint is delivered only to
-the private space of its handler tier — currently the club's Discord: a per-tier
+the private space of its handler tier (currently the club's Discord: a per-tier
 private channel, or a direct message to the president for a complaint about an
-exec — so a handler only ever sees complaints they are responsible for. A single
+exec), so a handler only ever sees complaints they are responsible for. A single
 shared view that exposes every complaint to everyone does *not* satisfy this
 policy.
 
@@ -87,16 +87,16 @@ person it concerns, or by a body they sit on** (conflict of interest).
 | A member           | Committee  | Exec                                                      |
 | The committee      | Exec       | President                                                 |
 | An exec            | President  | RUSU                                                      |
-| The president      | **RUSU directly** (no impartial internal handler exists)  | — |
+| The president      | **RUSU directly** (no impartial internal handler exists)  | *(none)* |
 
 RUSU (RMIT University Student Union) is the **external backstop** in two cases:
 
-1. a complaint concerns the **president** — there is no impartial internal
-   handler above them; and
+1. a complaint concerns the **president** (there is no impartial internal
+   handler above them); and
 2. anything the internal chain **cannot or will not resolve**.
 
 Because there is no impartial internal handler for a complaint **about the
-president**, the club does not take or store these through its own channel — the
+president**, the club does not take or store these through its own channel; the
 person is directed to RUSU and the support services in §10 (see §3 and §4). This
 also means such a complaint cannot be made anonymously through the club, since the
 external services need to be able to act on it.
@@ -147,25 +147,25 @@ own processes. Depending on the situation the services below may be more
 appropriate, and people are always free to use them **instead of, or as well as,**
 this channel:
 
-- **In an emergency, or if someone is in immediate danger — call 000.** For
+- **In an emergency, or if someone is in immediate danger, call 000.** For
   incidents on an RMIT campus, contact RMIT Security.
-- **[RUSU Student Rights](https://rusu.rmit.edu.au/studentrights/)** — free,
+- **[RUSU Student Rights](https://rusu.rmit.edu.au/studentrights/)**: free,
   confidential and *independent* advice and advocacy for students, including
   complaints, unfair treatment, misconduct and bullying (03 9925 1842,
   student.rights@rmit.edu.au). Being independent of RMIT, it is a good option when
   a concern involves the club's own office-holders.
-- **[RUSU Compass](https://rusu.rmit.edu.au/compass/)** — free drop-in
+- **[RUSU Compass](https://rusu.rmit.edu.au/compass/)**: free drop-in
   information, support and referrals, staffed by trained student volunteers, at
   the City, Carlton, Bundoora and Brunswick campuses.
-- **[RMIT Safer Community](https://www.rmit.edu.au/about/our-locations-and-facilities/facilities/safety-security/safer-community)**
-  — RMIT's service for reporting concerning, threatening or inappropriate
+- **[RMIT Safer Community](https://www.rmit.edu.au/about/our-locations-and-facilities/facilities/safety-security/safer-community)**:
+  RMIT's service for reporting concerning, threatening or inappropriate
   behaviour, including bullying, discrimination, sexual harassment, harm and
   violence.
-- **[RMIT Counselling](https://www.rmit.edu.au/students/support-services/health-safety-wellbeing/mental-health-counselling)**
-  — free, confidential short-term counselling and mental-health support for
+- **[RMIT Counselling](https://www.rmit.edu.au/students/support-services/health-safety-wellbeing/mental-health-counselling)**:
+  free, confidential short-term counselling and mental-health support for
   students.
-- **[RMIT student complaints](https://www.rmit.edu.au/students/support-services/feedback-complaints-appeals/complaints)**
-  — the University's formal process for complaints about RMIT itself, as distinct
+- **[RMIT student complaints](https://www.rmit.edu.au/students/support-services/feedback-complaints-appeals/complaints)**:
+  the University's formal process for complaints about RMIT itself, as distinct
   from conduct within the club.
 
 ## 11. Adoption and going live

@@ -26,7 +26,7 @@ def test_empty_body_rejected(client):
 
 
 def test_reviewer_token_bypasses_rate_limit(client, reviewer_token, monkeypatch):
-    # The bot forwards Discord submissions with the reviewer token — not throttled.
+    # The bot forwards Discord submissions with the reviewer token; not throttled.
     monkeypatch.setattr(ratelimit, "_LIMIT", 2)
     monkeypatch.setattr(ratelimit, "_WINDOW", 60.0)
     ratelimit._reset()

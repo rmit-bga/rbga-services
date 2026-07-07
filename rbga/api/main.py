@@ -1,7 +1,7 @@
-"""FastAPI app — the HTTP half of the monolith.
+"""FastAPI app: the HTTP half of the monolith.
 
 One process, three feature modules (keys, board games, complaints) mounted as
-routers. The Discord bot is a *separate* process (different runtime shape — a
+routers. The Discord bot is a *separate* process (different runtime shape, a
 long-running gateway connection) but shares the same image and db layer.
 """
 import os
@@ -32,7 +32,7 @@ app = FastAPI(title="RBGA Services", lifespan=lifespan)
 
 # The (future) complaints form on GitHub Pages POSTs cross-origin. Allow only
 # the origins named in CORS_ALLOW_ORIGINS (comma-separated); default empty means
-# no cross-origin requests are permitted — safe until the Pages origin is known.
+# no cross-origin requests are permitted, safe until the Pages origin is known.
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()]
 if _cors_origins:
     app.add_middleware(

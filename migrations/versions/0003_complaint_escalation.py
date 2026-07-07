@@ -2,8 +2,8 @@
 
 Lifecycle/escalation tracking for the complaints module (see
 docs/complaints-policy.md). Two new enum-backed columns on the complaints table:
-  * status       — new / acknowledged / escalated / closed (default 'new')
-  * escalated_to — committee / exec / president / rusu (nullable)
+  * status:       new / acknowledged / escalated / closed (default 'new')
+  * escalated_to: committee / exec / president / rusu (nullable)
 
 Revision ID: 0003_complaint_escalation
 Revises: 0002_add_price

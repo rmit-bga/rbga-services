@@ -1,7 +1,7 @@
 # RBGA Services
 
 Services for the RMIT Board Game Association, built as **one small app, not a
-pile of microservices** — the club's tools are low-volume and maintained by
+pile of microservices**: the club's tools are low-volume and maintained by
 rotating student execs, so handover beats scaling. Everything lives in the
 `rbga` Python package and shares one Postgres database:
 
@@ -14,8 +14,8 @@ rotating student execs, so handover beats scaling. Everything lives in the
 
 ## Two processes, one image
 
-- **API** (FastAPI, HTTP) — `uvicorn rbga.api.main:app`
-- **Bot** (discord.py, long-running gateway connection) — `python -m rbga.bot`
+- **API** (FastAPI, HTTP): `uvicorn rbga.api.main:app`
+- **Bot** (discord.py, long-running gateway connection): `python -m rbga.bot`
 
 They're separate processes because their runtimes differ, but they build from the
 same Dockerfile and import the same `rbga/db` layer. Adding a *feature* means
@@ -90,7 +90,7 @@ before services start. Add a migration with
 - **Complaints front-end.** The endpoint exists; the actual form (likely the
   GitHub Pages landing page POSTing to `/complaints`) is TODO.
 - **BGG auto-fill needs a token.** `/game add` can pull details from a BGG link,
-  but BGG now requires a registered-app Bearer token — set `BGG_API_TOKEN` (see
+  but BGG now requires a registered-app Bearer token, so set `BGG_API_TOKEN` (see
   `.env.example`) to enable it.
 - **Auth on the REST writes.** The HTTP endpoints for keys/board-games are still
   open (the *Discord* mutations are role-gated). Fine on a private network; the REST

@@ -1,13 +1,13 @@
-"""Discord bot — the long-running half of the monolith. Run with `python -m rbga.bot`.
+"""Discord bot: the long-running half of the monolith. Run with `python -m rbga.bot`.
 
 Shares the db layer with the API (imports models directly rather than calling
 the HTTP API), so a key taken via a slash command and one taken via REST hit the
 same table. This is the Discord front-end Owen's README always intended.
 
 Features:
-  * keys — `/keys`, `/whohas`, `/take`, `/return`, `/addkey`, `/removekey` (here)
-  * board games — the `/game` group (rbga/bot/boardgames.py)
-  * complaints — routing + ticket handling (rbga/bot/complaints.py). Handled via
+  * keys: `/keys`, `/whohas`, `/take`, `/return`, `/addkey`, `/removekey` (here)
+  * board games: the `/game` group (rbga/bot/boardgames.py)
+  * complaints: routing + ticket handling (rbga/bot/complaints.py). Handled via
     the API (reviewer token), never direct DB access; metadata only in Discord.
 
 Reads are open to everyone; mutations are gated to the exec role named by
@@ -15,7 +15,7 @@ Reads are open to everyone; mutations are gated to the exec role named by
 and deny all mutations.
 
 The SQLAlchemy session is synchronous, so every DB touch runs in a worker thread
-(`_in_thread`) to keep the event loop free — a blocked loop would blow past
+(`_in_thread`) to keep the event loop free; a blocked loop would blow past
 Discord's 3-second interaction-token window and silently drop commands.
 """
 import os
@@ -67,7 +67,7 @@ async def keys_cmd(interaction: discord.Interaction):
     if not rows:
         await interaction.followup.send("No keys are registered yet.")
         return
-    lines = [f"**{k.colour}** ({k.campus}) — {k.holder or 'nobody'}" for k in rows]
+    lines = [f"**{k.colour}** ({k.campus}): {k.holder or 'nobody'}" for k in rows]
     await interaction.followup.send("\n".join(lines))
 
 
@@ -119,7 +119,7 @@ async def take_cmd(interaction: discord.Interaction, colour: str, holder: str | 
         await interaction.followup.send(f"{holder} now holds the {colour} key.", ephemeral=True)
 
 
-@tree.command(name="return", description="Hand a key back — clears its holder")
+@tree.command(name="return", description="Hand a key back (clears its holder)")
 @app_commands.describe(colour="The key colour")
 @app_commands.autocomplete(colour=colour_autocomplete)
 @app_commands.check(require_exec_role)
@@ -228,9 +228,9 @@ async def on_ready():
 
 def main():
     if not TOKEN:
-        raise SystemExit("DISCORD_TOKEN is not set — see .env.example")
+        raise SystemExit("DISCORD_TOKEN is not set; see .env.example")
     if not EXEC_ROLE:
-        print("Warning: DISCORD_KEYS_ROLE is not set — all mutations will be denied.")
+        print("Warning: DISCORD_KEYS_ROLE is not set, so all mutations will be denied.")
     client.run(TOKEN)
 
 

@@ -1,4 +1,4 @@
-"""Single source of truth for the schema — one table per club feature.
+"""Single source of truth for the schema: one table per club feature.
 
 Ported from Owen's RBGAKeyTracker (the `keys` table), plus `board_games` and
 `complaints`. The complaint model deliberately stores NOTHING that could
@@ -51,7 +51,7 @@ class BoardGame(Base):
 
 class ComplaintCategory(str, enum.Enum):
     """Who the complaint is *about* (the subject). The handler is derived from
-    this per the escalation ladder in docs/complaints-policy.md — never store the
+    this per the escalation ladder in docs/complaints-policy.md; never store the
     handler here, so the conflict-of-interest rule stays enforceable."""
 
     member = "member"
@@ -71,7 +71,7 @@ class ComplaintStatus(str, enum.Enum):
 
 class EscalationTarget(str, enum.Enum):
     """Who a complaint was escalated to. `rusu` is the external backstop (RMIT
-    University Student Union) — see docs/complaints-policy.md §5-6."""
+    University Student Union); see docs/complaints-policy.md §5-6."""
 
     committee = "committee"
     exec = "exec"
@@ -110,7 +110,7 @@ class Complaint(Base):
 class ComplaintsConfig(Base):
     """Single-row (id=1) runtime config for where complaints are routed in
     Discord, set by the /complaints-setup wizard. Not sensitive (just channel/user
-    ids), so it lives in the default schema — the bot reaches it via the API."""
+    ids), so it lives in the default schema; the bot reaches it via the API."""
 
     __tablename__ = "complaints_config"
 

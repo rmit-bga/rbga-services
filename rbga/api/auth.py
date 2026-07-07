@@ -1,11 +1,11 @@
-"""HTTP auth for the API — all guards live here so there's one place to reason
+"""HTTP auth for the API. All guards live here so there's one place to reason
 about who can do what.
 
 Two independent, fail-closed token checks (an unset token rejects everything):
 
-  * require_api_token — gates the REST *writes* on keys/board-games
+  * require_api_token: gates the REST *writes* on keys/board-games
     (X-API-Token / RBGA_API_TOKEN). Reads stay open.
-  * require_reviewer  — gates reading and managing complaints
+  * require_reviewer:  gates reading and managing complaints
     (X-Reviewer-Token / COMPLAINTS_API_TOKEN). Deliberately a *separate*
     credential and header from the general write token, so a leak of the
     board-games/keys token can't touch complaints.
@@ -34,5 +34,5 @@ def require_reviewer(x_reviewer_token: str | None = Header(default=None)):
 
 def is_reviewer(token: str | None) -> bool:
     """True if `token` is the configured reviewer token. Non-raising (unlike
-    require_reviewer) — used to exempt the trusted bot from the public throttle."""
+    require_reviewer); used to exempt the trusted bot from the public throttle."""
     return bool(_REVIEWER_TOKEN) and token == _REVIEWER_TOKEN

@@ -7,8 +7,8 @@ not CSV. We drop it and let the real header (line 2:
 `Name,Image,BGG Link,Owner,Condition`) drive a csv.DictReader.
 
 By default this refuses to run against a non-empty `board_games` table (so an
-accidental re-run can't double the inventory). Pass --replace to wipe and reload
-— note the CSV has *intentional* duplicate rows (e.g. Polyhedral Dice Set ×4),
+accidental re-run can't double the inventory). Pass --replace to wipe and reload.
+Note the CSV has *intentional* duplicate rows (e.g. Polyhedral Dice Set ×4),
 so we never dedupe by title.
 """
 import argparse
@@ -64,12 +64,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     # Safe standalone: create just our table if the API hasn't yet. (Only this
-    # table — not Base.metadata — so we never touch the complaints schema.)
+    # table, not Base.metadata, so we never touch the complaints schema.)
     BoardGame.__table__.create(bind=engine, checkfirst=True)
 
     games = parse_rows(args.csv_path)
     if not games:
-        print("No games found in the CSV — nothing to import.")
+        print("No games found in the CSV; nothing to import.")
         return 1
 
     with SessionLocal() as db:

@@ -1,7 +1,7 @@
 # Deploy notes
 
 Operational reference for whoever runs the stack. Host-specific details (addresses,
-credentials) live outside the repo — keep them in the deploy host's own notes,
+credentials) live outside the repo; keep them in the deploy host's own notes,
 never here.
 
 ## Pattern
@@ -9,7 +9,7 @@ never here.
 One compose stack per host, in a dedicated directory (e.g. `~/servers/rbga/`):
 
 1. Clone (or let CI bootstrap) the repo into the deploy directory.
-2. `cp .env.example .env` and fill it in. `.env` is gitignored — never commit it.
+2. `cp .env.example .env` and fill it in. `.env` is gitignored; never commit it.
 3. `docker compose up -d --build`.
 
 Pushes to `main` auto-deploy via `.github/workflows/ci-cd.yml`: a hosted runner
@@ -58,5 +58,5 @@ Cron on the deploy host:
 0 3 * * * cd ~/servers/rbga && docker compose run --rm api python -m rbga.db.purge_complaints >> ~/servers/rbga/purge.log 2>&1
 ```
 
-`COMPLAINTS_RETENTION_DAYS` (currently 365) is the exec's number — change it by
+`COMPLAINTS_RETENTION_DAYS` (currently 365) is the exec's number; change it by
 editing the one env var.

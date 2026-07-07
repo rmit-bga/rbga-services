@@ -1,14 +1,14 @@
 """A small in-memory rate limiter for the public complaints endpoint.
 
 Design constraint: the complaints privacy rules forbid *storing or logging* any
-de-anonymising data, including IPs. So we never keep the raw client IP — the
+de-anonymising data, including IPs. So we never keep the raw client IP: the
 limiter key is a SHA-256 of (per-process random salt + IP). The salt is generated
 fresh at process start and never persisted, so the in-memory map can't be
 reversed back to IPs, and nothing is ever written to a log or the DB. The IP is
 touched only transiently to compute that hash.
 
 Fixed-window counter, keyed per hashed-IP. This assumes a single API worker (one
-uvicorn process, as in compose) — a multi-worker/replicated deployment would need
+uvicorn process, as in compose); a multi-worker/replicated deployment would need
 a shared store (e.g. Redis) instead.
 """
 import hashlib
@@ -20,7 +20,7 @@ from fastapi import Header, HTTPException, Request
 
 from . import auth
 
-# Per-process salt — makes the stored hashes non-reversible and unlinkable across
+# Per-process salt: makes the stored hashes non-reversible and unlinkable across
 # restarts. Never logged, never persisted.
 _SALT = secrets.token_bytes(16)
 
@@ -83,7 +83,7 @@ def complaints_rate_limit(
     request: Request, x_reviewer_token: str | None = Header(default=None)
 ) -> None:
     """FastAPI dependency for POST /complaints. Trusted callers holding the
-    reviewer token (the bot forwarding Discord submissions) are exempt — the
+    reviewer token (the bot forwarding Discord submissions) are exempt; the
     public throttle is only for anonymous/web submissions."""
     if auth.is_reviewer(x_reviewer_token):
         return
