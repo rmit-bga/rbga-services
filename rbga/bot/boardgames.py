@@ -26,6 +26,15 @@ MAX_LIST_CHARS = 1900  # keep under Discord's 2000-char message limit
 game = app_commands.Group(name="game", description="Manage the board-game inventory")
 
 
+def parse_tags(raw: str | None) -> list[str] | None:
+    """Comma-separated input to a clean tag list: " Strategy, Party game " ->
+    ["Strategy", "Party game"]. None/blank/only-commas -> None (unset)."""
+    if not raw:
+        return None
+    tags = [t.strip() for t in raw.split(",")]
+    return [t for t in tags if t] or None
+
+
 # --- autocomplete helpers ---------------------------------------------------
 
 async def game_autocomplete(
@@ -145,6 +154,8 @@ async def game_info(interaction: discord.Interaction, game: int):
         embed.add_field(name="Price", value=f"${g.price:.2f}")
     if g.location:
         embed.add_field(name="Location", value=g.location)
+    if g.tags:
+        embed.add_field(name="Tags", value=", ".join(g.tags), inline=False)
     if g.notes:
         embed.add_field(name="Notes", value=g.notes, inline=False)
     # BGG imports store a real image URL; old CSV rows store a filename we can't render.
@@ -168,6 +179,7 @@ async def game_info(interaction: discord.Interaction, game: int):
     max_players="Maximum players (overrides BGG)",
     location="Where it's stored",
     notes="Anything else worth recording",
+    tags="Comma-separated tags (auto-filled from BGG categories if omitted)",
 )
 @app_commands.autocomplete(owner=owner_autocomplete)
 @app_commands.check(require_exec_role)
@@ -183,9 +195,11 @@ async def game_add(
     max_players: int | None = None,
     location: str | None = None,
     notes: str | None = None,
+    tags: str | None = None,
 ):
     await interaction.response.defer(ephemeral=True)
 
+    tag_list = parse_tags(tags)
     image = None
     # Pull details from BGG when a link is given; explicit args always win.
     if bgg_link:
@@ -220,6 +234,7 @@ async def game_add(
         min_players = min_players if min_players is not None else data.get("min_players")
         max_players = max_players if max_players is not None else data.get("max_players")
         image = data.get("image")
+        tag_list = tag_list or data.get("tags")
 
     if not title:
         await interaction.followup.send(
@@ -241,6 +256,7 @@ async def game_add(
                 max_players=max_players,
                 location=location,
                 notes=notes,
+                tags=tag_list,
             )
             db.add(g)
             db.commit()
@@ -262,6 +278,7 @@ async def game_add(
     max_players="New maximum players",
     location="New storage location",
     notes="New notes",
+    tags="New comma-separated tags (replaces the existing set)",
 )
 @app_commands.autocomplete(game=game_autocomplete, owner=owner_autocomplete)
 @app_commands.check(require_exec_role)
@@ -277,6 +294,7 @@ async def game_edit(
     max_players: int | None = None,
     location: str | None = None,
     notes: str | None = None,
+    tags: str | None = None,
 ):
     await interaction.response.defer(ephemeral=True)
 
@@ -293,6 +311,7 @@ async def game_edit(
             max_players=max_players,
             location=location,
             notes=notes,
+            tags=parse_tags(tags),
         ).items()
         if v is not None
     }

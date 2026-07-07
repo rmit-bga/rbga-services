@@ -78,6 +78,13 @@ def parse_thing(xml: bytes) -> dict | None:
             publisher = link.get("value")
             break
 
+    # BGG's category links ("Strategy", "Party Game", ...) become our tags.
+    tags = [
+        link.get("value")
+        for link in item.findall("link")
+        if link.get("type") == "boardgamecategory" and link.get("value")
+    ]
+
     return {
         "title": title,
         "publisher": publisher,
@@ -85,6 +92,7 @@ def parse_thing(xml: bytes) -> dict | None:
         "max_players": _int(item, "maxplayers"),
         "year": _int(item, "yearpublished"),
         "image": _first(item, "image", attr=None),
+        "tags": tags or None,
     }
 
 

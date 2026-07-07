@@ -23,6 +23,7 @@ class BoardGameIn(BaseModel):
     bgg_link: str | None = None
     image: str | None = None
     price: float | None = None
+    tags: list[str] | None = None
 
 
 class BoardGameOut(BoardGameIn):
@@ -32,8 +33,14 @@ class BoardGameOut(BoardGameIn):
 
 
 @router.get("", response_model=list[BoardGameOut])
-def list_games(db: Session = Depends(get_session)):
-    return db.scalars(select(BoardGame).order_by(BoardGame.title)).all()
+def list_games(tag: str | None = None, db: Session = Depends(get_session)):
+    games = db.scalars(select(BoardGame).order_by(BoardGame.title)).all()
+    if tag:
+        # Case-insensitive tag filter, done in Python: portable across
+        # SQLite/Postgres JSON, and the inventory is a few hundred rows.
+        wanted = tag.casefold()
+        games = [g for g in games if any(t.casefold() == wanted for t in (g.tags or []))]
+    return games
 
 
 @router.post("", response_model=BoardGameOut, status_code=201, dependencies=[Depends(require_api_token)])

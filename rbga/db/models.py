@@ -7,7 +7,7 @@ de-anonymise a submitter (no IP, no user agent, no session id).
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Integer, Numeric, String, Text
+from sqlalchemy import JSON, DateTime, Enum, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import COMPLAINTS_SCHEMA, Base
@@ -47,6 +47,10 @@ class BoardGame(Base):
     image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Purchase value in dollars (the SharePoint export's "Cost" field).
     price: Mapped[float | None] = mapped_column(Numeric(10, 2, asdecimal=False), nullable=True)
+    # Free-form labels as a JSON list of strings (e.g. ["Strategy", "Party"]).
+    # Auto-filled from BGG's category links on /game add; a JSON column keeps
+    # this simple (no join table) and works on both SQLite and Postgres.
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class ComplaintCategory(str, enum.Enum):
