@@ -7,7 +7,7 @@ de-anonymise a submitter (no IP, no user agent, no session id).
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Enum, Integer, Numeric, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import COMPLAINTS_SCHEMA, Base
@@ -55,6 +55,33 @@ class BoardGame(Base):
     # Auto-filled from BGG's category links on /game add; a JSON column keeps
     # this simple (no join table) and works on both SQLite and Postgres.
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Asking price set by an exec. When unset, /game info and the export show
+    # a computed estimate from `price` x condition factor instead.
+    sell_price: Mapped[float | None] = mapped_column(
+        Numeric(10, 2, asdecimal=False), nullable=True
+    )
+    # Stocktake: when the game was last physically sighted, and whether the
+    # last stocktake marked it missing. Managed by /game stocktake in Discord.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    missing: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
+
+
+class Owner(Base):
+    """Contact details for a game owner (a member, or the club itself).
+
+    Deliberately a separate table from board_games: the public API serves game
+    records to the web page, and contact details must never ride along. This
+    table has NO API endpoint; it is read and written only by the exec-gated
+    /owner commands in Discord (rbga/bot/boardgames.py). Games reference
+    owners loosely by name (BoardGame.owner), matching the CSV heritage."""
+
+    __tablename__ = "owners"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    contact: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
 
 class ComplaintCategory(str, enum.Enum):

@@ -235,3 +235,71 @@ def test_export_csv_round_trips():
     uno = dict(zip(rows[0], rows[2]))
     assert uno["title"] == "Uno, Deluxe"
     assert uno["tags"] == ""
+
+
+# --- sell price, stocktake, owner contacts --------------------------------------
+@pytest.mark.parametrize(
+    "price,condition,expected",
+    [
+        (100.0, "Like New", 70.0),
+        (100.0, "Fair", 40.0),
+        (100.0, "Damaged", 15.0),
+        (100.0, "Damaged, Missing Pieces", 5.0),
+        (100.0, None, 50.0),  # unknown condition uses the default factor
+        (None, "Like New", None),  # nothing to estimate from
+    ],
+)
+def test_estimate_sell_price(price, condition, expected):
+    assert bot_bg.estimate_sell_price(price, condition) == expected
+
+
+def test_sell_price_display_prefers_manual():
+    manual = _game(id=1, price=100.0, condition="Fair", sell_price=25.0)
+    assert bot_bg.sell_price_display(manual) == "$25.00"
+    estimated = _game(id=2, price=100.0, condition="Fair")
+    assert bot_bg.sell_price_display(estimated) == "~$40.00 (est.)"
+    nothing = _game(id=3)
+    assert bot_bg.sell_price_display(nothing) is None
+
+
+def test_game_line_flags_missing():
+    assert "⚠ MISSING" in bot_bg._game_line(_game(id=1, missing=True))
+    assert "MISSING" not in bot_bg._game_line(_game(id=2, missing=False))
+
+
+def test_export_includes_sell_and_stocktake_columns():
+    import csv as _csv
+    import io as _io
+    from datetime import datetime as _dt
+
+    games = [
+        _game(id=1, price=100.0, condition="Fair", sell_price=25.0,
+              missing=False, last_seen_at=_dt(2026, 7, 7, 3, 0)),
+        _game(id=2, title="Lost Game", missing=True),
+    ]
+    rows = list(_csv.reader(_io.StringIO(bot_bg.export_csv(games))))
+    head = rows[0]
+    first = dict(zip(head, rows[1]))
+    assert first["sell_price"] == "25.0"
+    assert first["sell_estimate"] == "40.0"
+    assert first["last_seen_at"] == "2026-07-07"
+    assert first["missing"] == ""
+    lost = dict(zip(head, rows[2]))
+    assert lost["missing"] == "yes"
+
+
+def test_owner_contact_upsert_round_trip():
+    bot_bg.set_owner_contact("Quan", "quan#1234")
+    assert bot_bg.get_owner_contact("Quan") == "quan#1234"
+    bot_bg.set_owner_contact("Quan", "quan@rmit.edu.au")  # update, not duplicate
+    assert bot_bg.get_owner_contact("Quan") == "quan@rmit.edu.au"
+    assert bot_bg.get_owner_contact("Nobody") is None
+
+
+def test_owner_contact_not_in_public_api(client, write_token):
+    # The public board-games payload must never carry owner contact details.
+    bot_bg.set_owner_contact("Quan", "quan@rmit.edu.au")
+    _add(client, write_token, "Bark Avenue")
+    payload = client.get("/board-games").json()
+    assert "contact" not in payload[0]
+    assert "quan@rmit.edu.au" not in str(payload)

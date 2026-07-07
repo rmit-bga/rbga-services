@@ -1,4 +1,10 @@
-"""Board-game inventory endpoints."""
+"""Board-game inventory endpoints.
+
+Owner CONTACT details deliberately have no endpoint here: the owners table is
+managed only via the exec-gated /owner commands in Discord, so the public API
+can never leak them (see rbga/db/models.py Owner)."""
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
@@ -24,6 +30,7 @@ class BoardGameIn(BaseModel):
     image: str | None = None
     thumbnail: str | None = None
     price: float | None = None
+    sell_price: float | None = None
     tags: list[str] | None = None
 
 
@@ -31,6 +38,9 @@ class BoardGameOut(BoardGameIn):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    # Stocktake state: read-only here, managed by /game stocktake in Discord.
+    last_seen_at: datetime | None = None
+    missing: bool = False
 
 
 @router.get("", response_model=list[BoardGameOut])

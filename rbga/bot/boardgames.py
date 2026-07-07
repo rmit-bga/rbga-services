@@ -9,6 +9,7 @@ numeric id, disambiguated for the user by autocomplete that shows "Title (owner)
 """
 import csv
 import io
+from datetime import datetime
 from typing import Literal
 
 import discord
@@ -17,7 +18,7 @@ from sqlalchemy import func, select
 
 from ..bgg import BGGNotConfigured, extract_bgg_id, fetch_game
 from ..db.database import SessionLocal
-from ..db.models import BoardGame
+from ..db.models import BoardGame, Owner
 from .common import _in_thread, require_exec_role
 
 # Matches the SharePoint condition set imported from the CSV.
@@ -26,6 +27,33 @@ Condition = Literal["Like New", "Fair", "Damaged", "Damaged, Missing Pieces"]
 MAX_LIST_CHARS = 1900  # keep under Discord's 2000-char message limit
 
 game = app_commands.Group(name="game", description="Manage the board-game inventory")
+
+
+# Resale factor per condition, applied to the purchase price when no manual
+# sell_price is set. An exec decision: tweak the numbers here.
+_CONDITION_FACTOR = {
+    "Like New": 0.7,
+    "Fair": 0.4,
+    "Damaged": 0.15,
+    "Damaged, Missing Pieces": 0.05,
+}
+_UNKNOWN_CONDITION_FACTOR = 0.5
+
+
+def estimate_sell_price(price: float | None, condition: str | None) -> float | None:
+    """Estimated resale value from purchase price x condition factor.
+    None when there is no purchase price to estimate from."""
+    if price is None:
+        return None
+    return round(price * _CONDITION_FACTOR.get(condition or "", _UNKNOWN_CONDITION_FACTOR), 2)
+
+
+def sell_price_display(g: BoardGame) -> str | None:
+    """The asking price if set, else the estimate marked as such."""
+    if g.sell_price is not None:
+        return f"${g.sell_price:.2f}"
+    est = estimate_sell_price(g.price, g.condition)
+    return f"~${est:.2f} (est.)" if est is not None else None
 
 
 def parse_tags(raw: str | None) -> list[str] | None:
@@ -132,6 +160,8 @@ def _game_line(g: BoardGame) -> str:
         bits.append(f"({g.owner})")
     if g.condition:
         bits.append(f"[{g.condition}]")
+    if g.missing:
+        bits.append("⚠ MISSING")
     return f"`#{g.id}` " + " ".join(bits)
 
 
@@ -296,20 +326,29 @@ async def game_gallery(
 # --- export (the whole inventory in one file) ---------------------------------
 
 _EXPORT_FIELDS = [
-    "id", "title", "owner", "condition", "price", "location",
+    "id", "title", "owner", "condition", "price", "sell_price", "sell_estimate",
+    "missing", "last_seen_at", "location",
     "publisher", "min_players", "max_players", "tags", "bgg_link", "notes",
 ]
 
 
 def export_csv(games: list[BoardGame]) -> str:
-    """The inventory as CSV text, one row per game (tags joined with '; ')."""
+    """The inventory as CSV text, one row per game (tags joined with '; ').
+    sell_estimate is the computed condition-based value; sell_price is the
+    manual asking price when an exec has set one."""
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
     writer.writerow(_EXPORT_FIELDS)
     for g in games:
-        row = [getattr(g, f) for f in _EXPORT_FIELDS]
-        row[_EXPORT_FIELDS.index("tags")] = "; ".join(g.tags or [])
-        writer.writerow(row)
+        computed = {
+            "tags": "; ".join(g.tags or []),
+            "sell_estimate": estimate_sell_price(g.price, g.condition),
+            "missing": "yes" if g.missing else "",
+            "last_seen_at": f"{g.last_seen_at:%Y-%m-%d}" if g.last_seen_at else "",
+        }
+        writer.writerow(
+            [computed[f] if f in computed else getattr(g, f) for f in _EXPORT_FIELDS]
+        )
     return buf.getvalue()
 
 
@@ -371,8 +410,15 @@ async def game_info(interaction: discord.Interaction, game: int):
         embed.add_field(name="Publisher", value=g.publisher)
     if g.price is not None:
         embed.add_field(name="Price", value=f"${g.price:.2f}")
+    sell = sell_price_display(g)
+    if sell:
+        embed.add_field(name="Sell", value=sell)
     if g.location:
         embed.add_field(name="Location", value=g.location)
+    if g.missing:
+        embed.add_field(name="Stocktake", value="⚠ MISSING")
+    elif g.last_seen_at:
+        embed.add_field(name="Stocktake", value=f"Last seen {g.last_seen_at:%Y-%m-%d}")
     if g.tags:
         embed.add_field(name="Tags", value=", ".join(g.tags), inline=False)
     if g.notes:
@@ -391,6 +437,7 @@ async def game_info(interaction: discord.Interaction, game: int):
     bgg_link="BoardGameGeek URL; pulls title, publisher, players, and image",
     condition="Physical condition",
     price="Purchase value in dollars",
+    sell_price="Asking price in dollars (estimated from price+condition if unset)",
     title="The game's title (optional if a BGG link is given)",
     owner="Who owns it (e.g. RBGA or a member's name)",
     publisher="Publisher (overrides BGG)",
@@ -407,6 +454,7 @@ async def game_add(
     bgg_link: str | None = None,
     condition: Condition | None = None,
     price: float | None = None,
+    sell_price: float | None = None,
     title: str | None = None,
     owner: str | None = None,
     publisher: str | None = None,
@@ -469,6 +517,7 @@ async def game_add(
                 owner=owner,
                 condition=condition,
                 price=price,
+                sell_price=sell_price,
                 bgg_link=bgg_link,
                 image=image,
                 thumbnail=thumbnail,
@@ -500,6 +549,8 @@ async def game_add(
     location="New storage location",
     notes="New notes",
     tags="New comma-separated tags (replaces the existing set)",
+    price="New purchase value in dollars",
+    sell_price="New asking price in dollars",
 )
 @app_commands.autocomplete(game=game_autocomplete, owner=owner_autocomplete)
 @app_commands.check(require_exec_role)
@@ -516,6 +567,8 @@ async def game_edit(
     location: str | None = None,
     notes: str | None = None,
     tags: str | None = None,
+    price: float | None = None,
+    sell_price: float | None = None,
 ):
     await interaction.response.defer(ephemeral=True)
 
@@ -533,6 +586,8 @@ async def game_edit(
             location=location,
             notes=notes,
             tags=parse_tags(tags),
+            price=price,
+            sell_price=sell_price,
         ).items()
         if v is not None
     }
@@ -582,6 +637,209 @@ async def game_remove(interaction: discord.Interaction, game: int):
         await interaction.followup.send(f"Deleted **{name}**.", ephemeral=True)
 
 
+# --- stocktake (exec only) -----------------------------------------------------
+
+class StocktakeView(discord.ui.View):
+    """One-game-at-a-time checklist: Seen / Missing / Skip. Any exec can press
+    the buttons (interaction_check), so a stocktake can be shared. Transient:
+    it times out after 15 minutes; progress already recorded is kept, and
+    running /game stocktake again resumes (sorted by id)."""
+
+    def __init__(self, game_ids: list[int]) -> None:
+        super().__init__(timeout=900)
+        self.game_ids = game_ids
+        self.idx = 0
+        self.seen = 0
+        self.missing = 0
+        self.skipped = 0
+        self.message: discord.Message | None = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if require_exec_role(interaction):
+            return True
+        await interaction.response.send_message(
+            "Only execs can run the stocktake.", ephemeral=True
+        )
+        return False
+
+    def _summary(self) -> str:
+        return (
+            f"**Stocktake done:** {self.seen} seen, {self.missing} missing, "
+            f"{self.skipped} skipped. Missing games show ⚠ in /game list; "
+            "get the full picture with /game export."
+        )
+
+    async def render_kwargs(self) -> dict:
+        """content+embed for the current game, or the final summary."""
+        if self.idx >= len(self.game_ids):
+            return {"content": self._summary(), "embed": None, "view": None}
+        gid = self.game_ids[self.idx]
+        g = await _in_thread(lambda: _get_game(gid))
+        header = f"**Stocktake {self.idx + 1}/{len(self.game_ids)}**: is this on the shelf?"
+        return {"content": header, "embed": game_card(g) if g else None, "view": self}
+
+    async def _mark(self, interaction: discord.Interaction, missing: bool | None) -> None:
+        gid = self.game_ids[self.idx]
+        if missing is None:
+            self.skipped += 1
+        else:
+            def mutate() -> None:
+                with SessionLocal() as db:
+                    g = db.get(BoardGame, gid)
+                    if g:
+                        g.missing = missing
+                        if not missing:
+                            g.last_seen_at = datetime.utcnow()
+                        db.commit()
+
+            await _in_thread(mutate)
+            if missing:
+                self.missing += 1
+            else:
+                self.seen += 1
+        self.idx += 1
+        kwargs = await self.render_kwargs()
+        if self.idx >= len(self.game_ids):
+            self.stop()
+        await interaction.response.edit_message(**kwargs)
+
+    @discord.ui.button(label="Seen ✔", style=discord.ButtonStyle.success)
+    async def seen_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._mark(interaction, missing=False)
+
+    @discord.ui.button(label="Missing ✖", style=discord.ButtonStyle.danger)
+    async def missing_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._mark(interaction, missing=True)
+
+    @discord.ui.button(label="Skip ▶", style=discord.ButtonStyle.secondary)
+    async def skip_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._mark(interaction, missing=None)
+
+    async def on_timeout(self) -> None:
+        if self.message:
+            try:
+                await self.message.edit(
+                    content=f"Stocktake timed out at {self.idx}/{len(self.game_ids)}; "
+                    "progress so far is saved. Run /game stocktake to continue.",
+                    embed=None,
+                    view=None,
+                )
+            except discord.HTTPException:
+                pass
+
+
+def _get_game(gid: int) -> BoardGame | None:
+    with SessionLocal() as db:
+        return db.get(BoardGame, gid)
+
+
+@game.command(name="stocktake", description="Walk the shelf: mark each game seen or missing")
+@app_commands.describe(
+    owner="Only stocktake games owned by this person/RBGA",
+    unseen_only="Only games not yet sighted today (resume a stocktake)",
+)
+@app_commands.autocomplete(owner=owner_autocomplete)
+@app_commands.check(require_exec_role)
+async def game_stocktake(
+    interaction: discord.Interaction,
+    owner: str | None = None,
+    unseen_only: bool = True,
+):
+    await interaction.response.defer()
+
+    def query() -> list[int]:
+        with SessionLocal() as db:
+            stmt = select(BoardGame.id)
+            if owner:
+                stmt = stmt.where(BoardGame.owner == owner)
+            if unseen_only:
+                today = datetime.utcnow().date()
+                stmt = stmt.where(
+                    (BoardGame.last_seen_at.is_(None))
+                    | (func.date(BoardGame.last_seen_at) < today)
+                )
+            return list(db.scalars(stmt.order_by(BoardGame.id)).all())
+
+    ids = await _in_thread(query)
+    if not ids:
+        await interaction.followup.send("Nothing to stocktake: everything was sighted today.")
+        return
+
+    view = StocktakeView(ids)
+    kwargs = await view.render_kwargs()
+    view.message = await interaction.followup.send(**kwargs)
+
+
+# --- owner contacts (exec only; never exposed via the API) ---------------------
+
+owner_group = app_commands.Group(
+    name="owner", description="Manage game-owner contact details (exec only)"
+)
+
+
+def set_owner_contact(name: str, contact: str) -> None:
+    """Upsert the contact for an owner name (runs in a thread)."""
+    with SessionLocal() as db:
+        row = db.scalar(select(Owner).where(Owner.name == name))
+        if row is None:
+            db.add(Owner(name=name, contact=contact))
+        else:
+            row.contact = contact
+        db.commit()
+
+
+def get_owner_contact(name: str) -> str | None:
+    with SessionLocal() as db:
+        row = db.scalar(select(Owner).where(Owner.name == name))
+        return row.contact if row else None
+
+
+@owner_group.command(name="set", description="Save how to reach a game owner")
+@app_commands.describe(
+    name="Owner name exactly as it appears on their games",
+    contact="How to reach them (Discord handle, email, phone)",
+)
+@app_commands.autocomplete(name=owner_autocomplete)
+@app_commands.check(require_exec_role)
+async def owner_set(interaction: discord.Interaction, name: str, contact: str):
+    await interaction.response.defer(ephemeral=True)
+    await _in_thread(lambda: set_owner_contact(name, contact))
+    await interaction.followup.send(f"Saved contact for **{name}**.", ephemeral=True)
+
+
+@owner_group.command(name="info", description="Look up a game owner's contact")
+@app_commands.describe(name="Owner name")
+@app_commands.autocomplete(name=owner_autocomplete)
+@app_commands.check(require_exec_role)
+async def owner_info(interaction: discord.Interaction, name: str):
+    await interaction.response.defer(ephemeral=True)
+    contact = await _in_thread(lambda: get_owner_contact(name))
+    if contact:
+        await interaction.followup.send(f"**{name}**: {contact}", ephemeral=True)
+    else:
+        await interaction.followup.send(
+            f"No contact saved for **{name}**. Add one with /owner set.", ephemeral=True
+        )
+
+
+@owner_group.command(name="list", description="All saved owner contacts")
+@app_commands.check(require_exec_role)
+async def owner_list(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    def query() -> list[Owner]:
+        with SessionLocal() as db:
+            return list(db.scalars(select(Owner).order_by(Owner.name)).all())
+
+    rows = await _in_thread(query)
+    if not rows:
+        await interaction.followup.send("No owner contacts saved yet.", ephemeral=True)
+        return
+    lines = [f"**{o.name}**: {o.contact or '(no contact)'}" for o in rows]
+    await interaction.followup.send("\n".join(lines)[:1900], ephemeral=True)
+
+
 def setup(tree: app_commands.CommandTree) -> None:
-    """Register the /game group on the bot's command tree."""
+    """Register the /game and /owner groups on the bot's command tree."""
     tree.add_command(game)
+    tree.add_command(owner_group)
