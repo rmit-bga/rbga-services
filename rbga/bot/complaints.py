@@ -21,6 +21,10 @@ isolated complaints schema. This module is only the **handling** surface:
 The bot reaches complaints ONLY through the API (with the reviewer token); it has
 no direct complaints DB access, preserving the credential isolation. See
 docs/complaints-policy.md (and docs/deploy.md for the DB role setup).
+
+Submission (/complain) first shows the policy §3 promises and disclosures
+ephemerally with a Continue button that opens the form, satisfying the §11
+go-live condition that submitters are shown them.
 """
 import asyncio
 import os
@@ -528,6 +532,44 @@ async def complaints_setup(interaction: discord.Interaction) -> None:
 
 
 # --- submission (/complain) -------------------------------------------------
+# Who reads a complaint of each category, in plain language (policy §4/§5).
+_DISCLOSURE_DESTINATION = {
+    "member": "the committee (also visible to the exec and president)",
+    "committee": "the exec (also visible to the president)",
+    "exec": "the president only",
+}
+
+
+def disclosure_text(category: str) -> str:
+    """The policy §3 promises and disclosures, shown BEFORE the form opens so
+    every submitter has seen them (policy §11 condition 2)."""
+    return (
+        "**Before you continue, here is how this works:**\n"
+        "• **Anonymous**: the club records nothing about who you are (no account, "
+        "no address), and the people handling it cannot see who submitted it.\n"
+        f"• **Who will read it**: {_DISCLOSURE_DESTINATION[category]}.\n"
+        "• **Contact is optional** and the only thing that could identify you. "
+        "Leave it blank to stay anonymous.\n"
+        "• If the club refers your complaint to **RUSU** and you left contact "
+        "details, those may be shared as part of the referral.\n"
+        "• Submitting here uses your Discord account to send the request, though "
+        "the club never records it.\n"
+    )
+
+
+class DisclosureView(discord.ui.View):
+    """Ephemeral disclosure step: Continue opens the complaint form. Transient
+    (5 min); the Continue button can be pressed again if the form is dismissed."""
+
+    def __init__(self, category: str) -> None:
+        super().__init__(timeout=300)
+        self.category = category
+
+    @discord.ui.button(label="Continue", style=discord.ButtonStyle.primary)
+    async def cont(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(ComplaintModal(self.category))
+
+
 class ComplaintModal(discord.ui.Modal, title="Raise a complaint"):
     body = discord.ui.TextInput(
         label="What happened?",
@@ -612,7 +654,10 @@ async def complain(interaction: discord.Interaction, about: app_commands.Choice[
             ephemeral=True,
         )
         return
-    await interaction.response.send_modal(ComplaintModal(about.value))
+    # Policy §11(2): show the §3 promises and disclosures before the form.
+    await interaction.response.send_message(
+        disclosure_text(about.value), view=DisclosureView(about.value), ephemeral=True
+    )
 
 
 # --- poll loop --------------------------------------------------------------

@@ -186,3 +186,29 @@ def test_merge_targets_saved_wins_then_env_then_none():
         "exec": "200",  # falls back to env
         "president": None,  # neither set
     }
+
+
+# --- pre-form disclosures (policy section 3 / section 11(2)) --------------------
+def test_disclosure_destinations_cover_submittable_categories():
+    assert set(c._DISCLOSURE_DESTINATION) == {"member", "committee", "exec"}
+
+
+@pytest.mark.parametrize(
+    "category,readers",
+    [
+        ("member", "the committee (also visible to the exec and president)"),
+        ("committee", "the exec (also visible to the president)"),
+        ("exec", "the president only"),
+    ],
+)
+def test_disclosure_text_names_the_readers(category, readers):
+    assert readers in c.disclosure_text(category)
+
+
+@pytest.mark.parametrize("category", ["member", "committee", "exec"])
+def test_disclosure_text_carries_every_section3_point(category):
+    text = c.disclosure_text(category)
+    assert "Anonymous" in text
+    assert "Contact is optional" in text
+    assert "RUSU" in text and "may be shared" in text
+    assert "Discord account" in text
