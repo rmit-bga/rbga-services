@@ -13,7 +13,10 @@ isolated complaints schema. This module is only the **handling** surface:
     RUSU, so they never reach here.)
   * Handlers act via buttons: View / Acknowledge / Escalate / Close. *View*
     fetches the body and shows it **ephemerally** (only to the clicker), so the
-    text never lands in a Discord channel. The others drive the API.
+    text never lands in a Discord channel. The others drive the API. The button
+    row reflects the current status (actions already taken are greyed out), and
+    *Close* asks for an ephemeral confirmation first, because closing drops the
+    buttons and the body can never be viewed again.
 
 The bot reaches complaints ONLY through the API (with the reviewer token); it has
 no direct complaints DB access, preserving the credential isolation. See
@@ -205,6 +208,13 @@ _STATUS_COLOUR = {
     "escalated": discord.Colour.red(),
     "closed": discord.Colour.dark_grey(),
 }
+# Status shown with a coloured dot so state reads at a glance.
+_STATUS_LABEL = {
+    "new": "\U0001f7e0 New",
+    "acknowledged": "\U0001f535 Acknowledged",
+    "escalated": "\U0001f534 Escalated",
+    "closed": "⚫ Closed",
+}
 _ID_RE = re.compile(r"#(\d+)")
 
 
@@ -215,10 +225,13 @@ def _embed(c: dict) -> discord.Embed:
         colour=_STATUS_COLOUR.get(c["status"], discord.Colour.greyple()),
     )
     e.add_field(name="About", value=c["category"])
-    e.add_field(name="Status", value=c["status"])
+    e.add_field(name="Status", value=_STATUS_LABEL.get(c["status"], c["status"]))
     if c.get("escalated_to"):
         e.add_field(name="Escalated to", value=c["escalated_to"])
-    e.set_footer(text="Body hidden. Click View (only you will see it).")
+    if c["status"] == "closed":
+        e.set_footer(text="Closed. The body can no longer be viewed.")
+    else:
+        e.set_footer(text="Body hidden. Click View (only you will see it).")
     return e
 
 
@@ -235,7 +248,7 @@ async def _post(client: discord.Client, kind: str, symbol: str | None, c: dict, 
         print(f"[complaints] no {who} destination set; run /complaints-setup to route complaint #{c['id']}.")
         return False
 
-    embed, view = _embed(c), complaint_view(c["id"])
+    embed, view = _embed(c), complaint_view(c["id"], c["status"])
     if kind == "channel":
         channel = client.get_channel(int(target_id)) or await client.fetch_channel(int(target_id))
         await channel.send(embed=embed, view=view)
@@ -257,7 +270,7 @@ async def _route(client: discord.Client, c: dict, targets: dict) -> bool:
 
 async def _refresh(interaction: discord.Interaction, c: dict) -> None:
     """Update the original notification's embed; drop the buttons once closed."""
-    view = None if c["status"] == "closed" else complaint_view(c["id"])
+    view = None if c["status"] == "closed" else complaint_view(c["id"], c["status"])
     await interaction.message.edit(embed=_embed(c), view=view)
 
 
@@ -272,6 +285,17 @@ async def _send_body(interaction: discord.Interaction, cid: int, c: dict) -> Non
 
 
 # --- button handlers --------------------------------------------------------
+def action_disabled(action: str, status: str) -> bool:
+    """Grey out an action already taken: Acknowledge once acknowledged or
+    escalated, Escalate once escalated. View and Close always stay live
+    (a closed complaint has no buttons at all)."""
+    if action == "ack":
+        return status in ("acknowledged", "escalated")
+    if action == "escalate":
+        return status == "escalated"
+    return False
+
+
 async def _do_view(interaction: discord.Interaction, cid: int) -> None:
     await interaction.response.defer(ephemeral=True)
     await _send_body(interaction, cid, await _api_get(cid))
@@ -303,6 +327,41 @@ async def _do_escalate(interaction: discord.Interaction, cid: int) -> None:
         await interaction.followup.send(f"Escalated complaint #{cid} to the {target}.{tail}", ephemeral=True)
 
 
+class ConfirmCloseView(discord.ui.View):
+    """Ephemeral are-you-sure step before a complaint is closed. Closing is
+    final (the buttons, including View, are dropped), so a stray click must
+    not silently destroy access to the body."""
+
+    def __init__(self, cid: int, origin: discord.Message) -> None:
+        super().__init__(timeout=60)
+        self.cid = cid
+        self.origin = origin  # the notification message to refresh on close
+
+    @discord.ui.button(label="Yes, close it", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        c = await _api_patch(self.cid, status="closed")
+        await self.origin.edit(embed=_embed(c), view=None)
+        await interaction.response.edit_message(
+            content=f"Complaint #{self.cid} closed.", view=None
+        )
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.edit_message(
+            content=f"Complaint #{self.cid} was not closed.", view=None
+        )
+
+
+async def _do_close_prompt(interaction: discord.Interaction, cid: int) -> None:
+    """Ask before closing; only 'Yes, close it' actually closes."""
+    await interaction.response.send_message(
+        f"Close complaint #{cid}? This is final: it will be marked closed and its "
+        "body can no longer be viewed by anyone.",
+        view=ConfirmCloseView(cid, interaction.message),
+        ephemeral=True,
+    )
+
+
 # Action name -> (label, style). Order is the button order in the row.
 _ACTIONS: dict[str, tuple[str, discord.ButtonStyle]] = {
     "view": ("View", discord.ButtonStyle.secondary),
@@ -321,10 +380,15 @@ class ComplaintAction(
     custom_id on every click, so they work across bot restarts with no
     registered view instance and no reliance on the embed title."""
 
-    def __init__(self, action: str, cid: int) -> None:
+    def __init__(self, action: str, cid: int, disabled: bool = False) -> None:
         label, style = _ACTIONS[action]
         super().__init__(
-            discord.ui.Button(label=label, style=style, custom_id=f"complaint:{action}:{cid}")
+            discord.ui.Button(
+                label=label,
+                style=style,
+                custom_id=f"complaint:{action}:{cid}",
+                disabled=disabled,
+            )
         )
         self.action = action
         self.cid = cid
@@ -343,15 +407,16 @@ class ComplaintAction(
         elif self.action == "escalate":
             await _do_escalate(interaction, self.cid)
         else:
-            await _do_status(interaction, self.cid, "closed")
+            await _do_close_prompt(interaction, self.cid)
 
 
-def complaint_view(cid: int) -> discord.ui.View:
+def complaint_view(cid: int, status: str = "new") -> discord.ui.View:
     """The action row for a complaint notification, with the complaint id
-    embedded in every button's custom_id."""
+    embedded in every button's custom_id. Actions already taken for the given
+    status are greyed out."""
     view = discord.ui.View(timeout=None)
     for action in _ACTIONS:
-        view.add_item(ComplaintAction(action, cid))
+        view.add_item(ComplaintAction(action, cid, disabled=action_disabled(action, status)))
     return view
 
 
@@ -378,7 +443,7 @@ class ComplaintView(discord.ui.View):
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.success, custom_id="complaint:close")
     async def close_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await _do_status(interaction, _complaint_id(interaction), "closed")
+        await _do_close_prompt(interaction, _complaint_id(interaction))
 
 
 # --- setup wizard (owner / admin only) --------------------------------------

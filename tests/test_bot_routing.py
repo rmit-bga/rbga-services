@@ -92,6 +92,44 @@ def test_complaint_view_builder_embeds_the_id():
     ]
 
 
+# --- status-aware buttons ------------------------------------------------------
+@pytest.mark.parametrize(
+    "action,status,disabled",
+    [
+        # Acknowledge greys out once acknowledged or escalated.
+        ("ack", "new", False),
+        ("ack", "acknowledged", True),
+        ("ack", "escalated", True),
+        # Escalate greys out only once escalated.
+        ("escalate", "new", False),
+        ("escalate", "acknowledged", False),
+        ("escalate", "escalated", True),
+        # View and Close always stay live.
+        ("view", "escalated", False),
+        ("close", "escalated", False),
+    ],
+)
+def test_action_disabled(action, status, disabled):
+    assert c.action_disabled(action, status) is disabled
+
+
+def test_complaint_view_reflects_status():
+    view = c.complaint_view(7, "acknowledged")
+    # DynamicItem wraps the real Button in .item; disabled lives on the button.
+    state = {item.custom_id: item.item.disabled for item in view.children}
+    assert state == {
+        "complaint:view:7": False,
+        "complaint:ack:7": True,
+        "complaint:escalate:7": False,
+        "complaint:close:7": False,
+    }
+
+
+def test_status_labels_cover_every_status():
+    # Every lifecycle status renders with a coloured-dot label in the embed.
+    assert set(c._STATUS_LABEL) == {"new", "acknowledged", "escalated", "closed"}
+
+
 def _fake_button_interaction(embed_title: str) -> MagicMock:
     inter = MagicMock(spec=discord.Interaction)
     msg = MagicMock()
