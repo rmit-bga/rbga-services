@@ -90,6 +90,11 @@ person it concerns, or by a body they sit on** (conflict of interest).
 | An exec            | President  |
 | The president      | **RUSU directly** (no impartial internal handler exists) |
 
+**The exec (the club's executive)** is a team of **seven**. Wherever this
+policy calls for an executive decision (resolving a complaint the executive
+handles, referring one to RUSU (§6), revising the retention period (§8), or
+adopting this policy (§11)), the executive acts with a **quorum of four**.
+
 There is no separate in-system escalation step: the exec and president can
 already read the handling channels (§4), so anything that needs more senior
 attention is already visible to them.
