@@ -1,4 +1,4 @@
-"""Complaints: public submit, reviewer-gated management (escalate/close)."""
+"""Complaints: public submit, reviewer-gated management (acknowledge/close)."""
 
 
 def _submit(client) -> int:
@@ -27,17 +27,16 @@ def test_patch_unknown_id_404(client, reviewer_token):
     assert r.status_code == 404
 
 
-def test_escalating_sets_status_and_target(client, reviewer_token):
+def test_escalation_is_retired(client, reviewer_token):
+    # escalated_to is no longer part of the API; unknown fields are ignored and
+    # "escalated" is no longer a valid status.
     cid = _submit(client)
-    r = client.patch(
-        f"/complaints/{cid}",
-        json={"escalated_to": "rusu"},
-        headers={"X-Reviewer-Token": reviewer_token},
-    )
+    headers = {"X-Reviewer-Token": reviewer_token}
+    r = client.patch(f"/complaints/{cid}", json={"status": "escalated"}, headers=headers)
+    assert r.status_code == 422
+    r = client.patch(f"/complaints/{cid}", json={"escalated_to": "rusu"}, headers=headers)
     assert r.status_code == 200
-    body = r.json()
-    assert body["status"] == "escalated"
-    assert body["escalated_to"] == "rusu"
+    assert r.json()["status"] == "new"  # nothing changed
 
 
 def test_closing_sets_closed_at_and_reopening_clears_it(client, reviewer_token):

@@ -8,8 +8,8 @@ Access levels on purpose:
   * GET   /complaints          is RESTRICTED. Requires the reviewer token.
   * GET   /complaints/{id}      is RESTRICTED. Single complaint (the Discord handler
     fetches the body on demand to show it ephemerally).
-  * PATCH /complaints/{id}      is RESTRICTED. Acknowledge / escalate / close per
-    the ladder in docs/complaints-policy.md.
+  * PATCH /complaints/{id}      is RESTRICTED. Acknowledge / close per
+    docs/complaints-policy.md.
   * POST  /complaints/{id}/routed is RESTRICTED. Bookkeeping: the Discord handler
     marks a complaint once it has been posted to its handler tier.
 
@@ -32,7 +32,6 @@ from ...db.models import (
     ComplaintCategory,
     ComplaintsConfig,
     ComplaintStatus,
-    EscalationTarget,
 )
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
@@ -60,18 +59,14 @@ class ComplaintOut(ComplaintAck):
     body: str
     contact: str | None
     status: ComplaintStatus
-    escalated_to: EscalationTarget | None
     closed_at: datetime | None
     routed_at: datetime | None
 
 
 class ComplaintUpdate(BaseModel):
-    """Reviewer action on a complaint. Both fields optional: send whichever you
-    want to change. Setting `escalated_to` implies `status = escalated` unless a
-    `status` is given explicitly in the same request."""
+    """Reviewer action on a complaint: set the lifecycle status."""
 
     status: ComplaintStatus | None = None
-    escalated_to: EscalationTarget | None = None
 
 
 class ComplaintsConfigIn(BaseModel):
@@ -190,10 +185,6 @@ def update_complaint(
     if not complaint:
         raise HTTPException(404, "No such complaint")
 
-    # Escalating implies the 'escalated' status; an explicit status below wins.
-    if data.escalated_to is not None:
-        complaint.escalated_to = data.escalated_to
-        complaint.status = ComplaintStatus.escalated
     if data.status is not None:
         complaint.status = data.status
 

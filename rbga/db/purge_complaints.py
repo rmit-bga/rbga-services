@@ -23,8 +23,8 @@ from .models import Complaint, ComplaintStatus
 
 def purge(session, retention_days: int) -> int:
     """Delete complaints closed more than `retention_days` ago. Returns the row
-    count deleted. Only touches CLOSED complaints; open/escalated ones are never
-    purged regardless of age."""
+    count deleted. Only touches CLOSED complaints; open ones are never purged
+    regardless of age."""
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     result = session.execute(
         delete(Complaint).where(

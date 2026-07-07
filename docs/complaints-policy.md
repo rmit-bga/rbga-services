@@ -7,8 +7,8 @@
 The RMIT Board Game Association (RBGA) provides an **anonymous** channel for
 members to raise concerns about the conduct of a member, the committee, an exec,
 or the president. This policy sets out what the club collects, what it promises
-people who raise a complaint, who may read complaints, how they are escalated,
-and how long they are kept. Any system the club uses to receive complaints must
+people who raise a complaint, who may read and handle complaints, and how long
+they are kept. Any system the club uses to receive complaints must
 comply with this policy.
 
 ## 2. What we collect
@@ -39,7 +39,7 @@ Anyone invited to raise a complaint must be told, in plain language:
 - Leaving **contact details is optional**, and is the only thing that could
   identify them. They should leave it blank to stay anonymous, and fill it in only
   if they want a reply.
-- **Where their complaint goes**: the escalation ladder in §5. A complaint about
+- **Where their complaint goes**: the handling table in §5. A complaint about
   the **president** is handled outside the club: the person is directed to RUSU
   and the services in §10 rather than submitting it here, because the club has no
   impartial way to handle it. Those external services can act on a concern and so
@@ -54,46 +54,53 @@ Anyone may raise a complaint. **Reading** them is governed by two principles:
 - **Conflict of interest**: a complaint is never readable by the person it
   concerns, or by a body they sit on.
 - **Need to know**: a complaint is readable only by the office-holder(s)
-  responsible for handling it, not by all office-holders.
+  responsible for handling it and the office-holders senior to them, never by
+  the general membership.
 
-Applying both to the escalation ladder (§5):
+Applying both to the handling table (§5):
 
-| Complaint is about | Read by (its handler) | Also readable once escalated |
-|--------------------|-----------------------|------------------------------|
-| A member           | the committee         | the exec                     |
-| The committee      | the exec              | the president                |
-| An exec            | **the president only**| (referred externally to RUSU)|
-| The president      | *no one internal; directed to RUSU, not stored by the club* | *(none)* |
+| Complaint is about | Read by |
+|--------------------|---------|
+| A member           | the committee, plus the exec and president (who can see the committee channel) |
+| The committee      | the exec, plus the president |
+| An exec            | **the president only** |
+| The president      | *no one internal; directed to RUSU, not stored by the club* |
 
 Reading is **closed by default**: if no authorised handler exists, no one can
 read. Those who can read a complaint **must not disclose its contents** outside
 the handling process described here.
 
 **This separation is enforced by routing.** Each complaint is delivered only to
-the private space of its handler tier (currently the club's Discord: a per-tier
-private channel, or a direct message to the president for a complaint about an
-exec), so a handler only ever sees complaints they are responsible for. A single
-shared view that exposes every complaint to everyone does *not* satisfy this
-policy.
+the private space of its handling tier (currently the club's Discord: a
+per-tier private channel, or a direct message to the president for a complaint
+about an exec). More senior office-holders may be members of those private
+channels; the general membership is not. A single shared view that exposes
+every complaint to everyone does *not* satisfy this policy.
 
-## 5. How complaints are escalated
+## 5. Who handles a complaint
 
 The category records who a complaint is about. The office-holder who handles it
 follows from that, under one guiding rule: **a complaint is never handled by the
 person it concerns, or by a body they sit on** (conflict of interest).
 
-| Complaint is about | Handled by | Escalates to (if unresolved or the handler is conflicted) |
-|--------------------|------------|-----------------------------------------------------------|
-| A member           | Committee  | Exec                                                      |
-| The committee      | Exec       | President                                                 |
-| An exec            | President  | RUSU                                                      |
-| The president      | **RUSU directly** (no impartial internal handler exists)  | *(none)* |
+| Complaint is about | Handled by |
+|--------------------|------------|
+| A member           | Committee  |
+| The committee      | Exec       |
+| An exec            | President  |
+| The president      | **RUSU directly** (no impartial internal handler exists) |
+
+There is no separate in-system escalation step: the exec and president can
+already read the handling channels (§4), so anything that needs more senior
+attention is already visible to them.
 
 RUSU (RMIT University Student Union) is the **external backstop** in two cases:
 
 1. a complaint concerns the **president** (there is no impartial internal
    handler above them); and
-2. anything the internal chain **cannot or will not resolve**.
+2. anything the internal chain **cannot or will not resolve**: a handler may
+   refer a complaint on to RUSU (§6), and the person who raised it is always
+   free to go to RUSU directly (§10).
 
 Because there is no impartial internal handler for a complaint **about the
 president**, the club does not take or store these through its own channel; the
@@ -114,8 +121,7 @@ is the most sensitive step in this process. On any such referral:
 ## 7. The life of a complaint
 
 Each complaint moves through a simple lifecycle: **received → acknowledged →
-(escalated, if needed) → closed**. The club records which stage a complaint is
-at, and, where it was escalated, who it was escalated to.
+closed**. The club records which stage a complaint is at.
 
 ## 8. Retention
 

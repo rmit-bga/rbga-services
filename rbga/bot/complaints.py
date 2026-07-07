@@ -11,7 +11,7 @@ isolated complaints schema. This module is only the **handling** surface:
         exec      -> president DM
     (Complaints about the president are rejected at submission and redirected to
     RUSU, so they never reach here.)
-  * Handlers act via buttons: View / Acknowledge / Escalate / Close. *View*
+  * Handlers act via buttons: View / Acknowledge / Close. *View*
     fetches the body and shows it **ephemerally** (only to the clicker), so the
     text never lands in a Discord channel. The others drive the API. The button
     row reflects the current status (actions already taken are greyed out), and
@@ -49,30 +49,19 @@ RUSU_LINKS = (
 )
 
 # --- routing (pure, unit-testable) -----------------------------------------
-# Each maps a complaint category to (kind, symbol) where kind is "channel"/"dm"/
-# "rusu" and symbol names the tier the id is resolved from.
-_INITIAL = {
+# Maps a complaint category to (kind, symbol) where kind is "channel"/"dm" and
+# symbol names the tier the id is resolved from.
+_DESTINATIONS = {
     "member": ("channel", "committee"),
     "committee": ("channel", "exec"),
     "exec": ("dm", "president"),
 }
-_ESCALATED = {
-    "member": ("channel", "exec"),
-    "committee": ("dm", "president"),
-    "exec": ("rusu", None),
-}
-_ESCALATION_TARGET = {"member": "exec", "committee": "president", "exec": "rusu"}
 
 
-def destination_for(category: str, escalated: bool = False) -> tuple[str, str | None]:
-    """Where a complaint of `category` should be posted (or, if escalated, sent
-    on to). Raises KeyError for unroutable categories (e.g. president)."""
-    return (_ESCALATED if escalated else _INITIAL)[category]
-
-
-def next_escalation_target(category: str) -> str:
-    """The EscalationTarget a complaint of `category` escalates to."""
-    return _ESCALATION_TARGET[category]
+def destination_for(category: str) -> tuple[str, str]:
+    """Where a complaint of `category` should be posted. Raises KeyError for
+    unroutable categories (e.g. president)."""
+    return _DESTINATIONS[category]
 
 
 def is_submittable(category: str) -> bool:
@@ -125,14 +114,9 @@ async def _api_get(cid: int) -> dict:
         return await r.json()
 
 
-async def _api_patch(cid: int, *, status: str | None = None, escalated_to: str | None = None) -> dict:
+async def _api_patch(cid: int, *, status: str) -> dict:
     s = await _http()
-    payload: dict[str, str] = {}
-    if status:
-        payload["status"] = status
-    if escalated_to:
-        payload["escalated_to"] = escalated_to
-    async with s.patch(f"{API_BASE}/complaints/{cid}", json=payload) as r:
+    async with s.patch(f"{API_BASE}/complaints/{cid}", json={"status": status}) as r:
         r.raise_for_status()
         return await r.json()
 
@@ -205,14 +189,12 @@ def tier_ready(category: str, targets: dict) -> bool:
 _STATUS_COLOUR = {
     "new": discord.Colour.orange(),
     "acknowledged": discord.Colour.blurple(),
-    "escalated": discord.Colour.red(),
     "closed": discord.Colour.dark_grey(),
 }
 # Status shown with a coloured dot so state reads at a glance.
 _STATUS_LABEL = {
     "new": "\U0001f7e0 New",
     "acknowledged": "\U0001f535 Acknowledged",
-    "escalated": "\U0001f534 Escalated",
     "closed": "⚫ Closed",
 }
 _ID_RE = re.compile(r"#(\d+)")
@@ -226,8 +208,6 @@ def _embed(c: dict) -> discord.Embed:
     )
     e.add_field(name="About", value=c["category"])
     e.add_field(name="Status", value=_STATUS_LABEL.get(c["status"], c["status"]))
-    if c.get("escalated_to"):
-        e.add_field(name="Escalated to", value=c["escalated_to"])
     if c["status"] == "closed":
         e.set_footer(text="Closed. The body can no longer be viewed.")
     else:
@@ -286,14 +266,9 @@ async def _send_body(interaction: discord.Interaction, cid: int, c: dict) -> Non
 
 # --- button handlers --------------------------------------------------------
 def action_disabled(action: str, status: str) -> bool:
-    """Grey out an action already taken: Acknowledge once acknowledged or
-    escalated, Escalate once escalated. View and Close always stay live
-    (a closed complaint has no buttons at all)."""
-    if action == "ack":
-        return status in ("acknowledged", "escalated")
-    if action == "escalate":
-        return status == "escalated"
-    return False
+    """Grey out an action already taken: Acknowledge once acknowledged. View
+    and Close always stay live (a closed complaint has no buttons at all)."""
+    return action == "ack" and status == "acknowledged"
 
 
 async def _do_view(interaction: discord.Interaction, cid: int) -> None:
@@ -308,23 +283,11 @@ async def _do_status(interaction: discord.Interaction, cid: int, status: str) ->
     await interaction.followup.send(f"Complaint #{cid} → {status}.", ephemeral=True)
 
 
-async def _do_escalate(interaction: discord.Interaction, cid: int) -> None:
-    await interaction.response.defer(ephemeral=True)
-    category = (await _api_get(cid))["category"]
-    target = next_escalation_target(category)
-    c = await _api_patch(cid, status="escalated", escalated_to=target)
-    await _refresh(interaction, c)
-
-    kind, symbol = destination_for(category, escalated=True)
-    if kind == "rusu":
-        await interaction.followup.send(
-            f"Complaint #{cid} should now be referred to RUSU:\n{RUSU_LINKS}\nMarked escalated.",
-            ephemeral=True,
-        )
-    else:
-        posted = await _post(interaction.client, kind, symbol, c, await resolve_targets())
-        tail = "" if posted else f" (no {target} destination set yet; run /complaints-setup)"
-        await interaction.followup.send(f"Escalated complaint #{cid} to the {target}.{tail}", ephemeral=True)
+# Old messages still carry an Escalate button; clicking it gets this notice.
+_ESCALATE_RETIRED = (
+    "Escalation has been retired: execs and the president read the handling "
+    "channels directly. Use Acknowledge or Close."
+)
 
 
 class ConfirmCloseView(discord.ui.View):
@@ -366,13 +329,14 @@ async def _do_close_prompt(interaction: discord.Interaction, cid: int) -> None:
 _ACTIONS: dict[str, tuple[str, discord.ButtonStyle]] = {
     "view": ("View", discord.ButtonStyle.secondary),
     "ack": ("Acknowledge", discord.ButtonStyle.primary),
-    "escalate": ("Escalate", discord.ButtonStyle.danger),
     "close": ("Close", discord.ButtonStyle.success),
 }
 
 
 class ComplaintAction(
     discord.ui.DynamicItem[discord.ui.Button],
+    # "escalate" stays in the template so clicks on old messages' Escalate
+    # buttons get the retirement notice instead of "This interaction failed".
     template=r"complaint:(?P<action>view|ack|escalate|close):(?P<id>[0-9]+)",
 ):
     """A complaint button whose custom_id carries both the action and the
@@ -381,7 +345,7 @@ class ComplaintAction(
     registered view instance and no reliance on the embed title."""
 
     def __init__(self, action: str, cid: int, disabled: bool = False) -> None:
-        label, style = _ACTIONS[action]
+        label, style = _ACTIONS.get(action, ("Escalate", discord.ButtonStyle.danger))
         super().__init__(
             discord.ui.Button(
                 label=label,
@@ -405,7 +369,7 @@ class ComplaintAction(
         elif self.action == "ack":
             await _do_status(interaction, self.cid, "acknowledged")
         elif self.action == "escalate":
-            await _do_escalate(interaction, self.cid)
+            await interaction.response.send_message(_ESCALATE_RETIRED, ephemeral=True)
         else:
             await _do_close_prompt(interaction, self.cid)
 
@@ -439,7 +403,9 @@ class ComplaintView(discord.ui.View):
 
     @discord.ui.button(label="Escalate", style=discord.ButtonStyle.danger, custom_id="complaint:escalate")
     async def escalate_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await _do_escalate(interaction, _complaint_id(interaction))
+        # Kept registered so old messages' Escalate buttons reply instead of
+        # failing; escalation itself is retired.
+        await interaction.response.send_message(_ESCALATE_RETIRED, ephemeral=True)
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.success, custom_id="complaint:close")
     async def close_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -593,7 +559,7 @@ class ComplaintModal(discord.ui.Modal, title="Raise a complaint"):
         # Route it right away rather than waiting for the poll loop. If it fails
         # (e.g. the tier isn't configured yet) the poll loop retries it later.
         try:
-            c = {"id": ack["id"], "category": self.category, "status": "new", "escalated_to": None}
+            c = {"id": ack["id"], "category": self.category, "status": "new"}
             await _route(interaction.client, c, await resolve_targets())
         except Exception as e:
             print(f"[complaints] instant-route failed for #{ack['id']}: {e!r}")

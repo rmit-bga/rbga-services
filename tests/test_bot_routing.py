@@ -17,28 +17,8 @@ from rbga.bot import complaints as c
         ("exec", ("dm", "president")),
     ],
 )
-def test_initial_destination(category, expected):
-    assert c.destination_for(category, escalated=False) == expected
-
-
-@pytest.mark.parametrize(
-    "category,expected",
-    [
-        ("member", ("channel", "exec")),
-        ("committee", ("dm", "president")),
-        ("exec", ("rusu", None)),
-    ],
-)
-def test_escalated_destination(category, expected):
-    assert c.destination_for(category, escalated=True) == expected
-
-
-@pytest.mark.parametrize(
-    "category,target",
-    [("member", "exec"), ("committee", "president"), ("exec", "rusu")],
-)
-def test_escalation_target(category, target):
-    assert c.next_escalation_target(category) == target
+def test_destination(category, expected):
+    assert c.destination_for(category) == expected
 
 
 def test_president_is_not_routable():
@@ -62,6 +42,8 @@ def test_complaint_id_regex_reads_the_embed_title():
 
 
 # --- dynamic buttons (id carried in the custom_id) ----------------------------
+# "escalate" still matches so old messages' Escalate buttons get the
+# retirement notice instead of silently failing.
 @pytest.mark.parametrize("action", ["view", "ack", "escalate", "close"])
 def test_dynamic_template_matches_and_extracts(action):
     pat = c.ComplaintAction.__discord_ui_compiled_template__
@@ -87,7 +69,6 @@ def test_complaint_view_builder_embeds_the_id():
     assert [item.custom_id for item in view.children] == [
         "complaint:view:7",
         "complaint:ack:7",
-        "complaint:escalate:7",
         "complaint:close:7",
     ]
 
@@ -96,17 +77,12 @@ def test_complaint_view_builder_embeds_the_id():
 @pytest.mark.parametrize(
     "action,status,disabled",
     [
-        # Acknowledge greys out once acknowledged or escalated.
+        # Acknowledge greys out once acknowledged.
         ("ack", "new", False),
         ("ack", "acknowledged", True),
-        ("ack", "escalated", True),
-        # Escalate greys out only once escalated.
-        ("escalate", "new", False),
-        ("escalate", "acknowledged", False),
-        ("escalate", "escalated", True),
         # View and Close always stay live.
-        ("view", "escalated", False),
-        ("close", "escalated", False),
+        ("view", "acknowledged", False),
+        ("close", "acknowledged", False),
     ],
 )
 def test_action_disabled(action, status, disabled):
@@ -120,14 +96,13 @@ def test_complaint_view_reflects_status():
     assert state == {
         "complaint:view:7": False,
         "complaint:ack:7": True,
-        "complaint:escalate:7": False,
         "complaint:close:7": False,
     }
 
 
 def test_status_labels_cover_every_status():
     # Every lifecycle status renders with a coloured-dot label in the embed.
-    assert set(c._STATUS_LABEL) == {"new", "acknowledged", "escalated", "closed"}
+    assert set(c._STATUS_LABEL) == {"new", "acknowledged", "closed"}
 
 
 def _fake_button_interaction(embed_title: str) -> MagicMock:
