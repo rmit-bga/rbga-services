@@ -192,3 +192,25 @@ def test_gallery_view_button_states():
     many.page = 2  # last page of 23 games
     many._sync_buttons()
     assert not many.prev_btn.disabled and many.next_btn.disabled
+
+
+def test_list_pages_chunks_by_message_budget():
+    # Long titles force multiple text pages; every game appears exactly once.
+    games = [_game(id=i, title=f"Game {i} " + "x" * 60) for i in range(1, 61)]
+    pages = bot_bg.list_pages(games)
+    assert len(pages) > 1
+    assert all(len(p) <= bot_bg.MAX_LIST_CHARS for p in pages)
+    joined = "\n".join(pages)
+    assert all(f"`#{i}`" in joined for i in range(1, 61))
+
+
+def test_list_view_renders_header_and_buttons():
+    view = bot_bg.ListView(60, ["page one", "page two"])
+    assert view.prev_btn.disabled and not view.next_btn.disabled
+    first = view.render()
+    assert first["content"].startswith("**60 game(s)**, page 1/2")
+    assert "page one" in first["content"]
+    view.page = 1
+    view._sync_buttons()
+    assert not view.prev_btn.disabled and view.next_btn.disabled
+    assert "page two" in view.render()["content"]

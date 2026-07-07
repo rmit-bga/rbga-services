@@ -116,23 +116,38 @@ async def game_list(
         await interaction.followup.send("No board games match that.")
         return
 
-    lines, shown = [], 0
-    for g in games:
-        bits = [f"**{g.title}**"]
-        if g.owner:
-            bits.append(f"({g.owner})")
-        if g.condition:
-            bits.append(f"[{g.condition}]")
-        line = f"`#{g.id}` " + " ".join(bits)
-        if sum(len(x) + 1 for x in lines) + len(line) > MAX_LIST_CHARS:
-            break
-        lines.append(line)
-        shown += 1
+    pages = list_pages(games)
+    if len(pages) == 1:
+        await interaction.followup.send(f"**{len(games)} game(s)**\n" + pages[0])
+        return
+    view = ListView(len(games), pages)
+    view.message = await interaction.followup.send(view=view, **view.render())
 
-    header = f"**{len(games)} game(s)**"
-    if shown < len(games):
-        header += f" (showing first {shown}; refine with filters)"
-    await interaction.followup.send(header + "\n" + "\n".join(lines))
+
+def _game_line(g: BoardGame) -> str:
+    bits = [f"**{g.title}**"]
+    if g.owner:
+        bits.append(f"({g.owner})")
+    if g.condition:
+        bits.append(f"[{g.condition}]")
+    return f"`#{g.id}` " + " ".join(bits)
+
+
+def list_pages(games: list[BoardGame]) -> list[str]:
+    """Chunk the text list into message-sized pages."""
+    pages: list[str] = []
+    cur: list[str] = []
+    cur_len = 0
+    for g in games:
+        line = _game_line(g)
+        if cur and cur_len + len(line) + 1 > MAX_LIST_CHARS:
+            pages.append("\n".join(cur))
+            cur, cur_len = [], 0
+        cur.append(line)
+        cur_len += len(line) + 1
+    if cur:
+        pages.append("\n".join(cur))
+    return pages or [""]
 
 
 # --- gallery (embed cards with images, paginated) ----------------------------
@@ -180,29 +195,30 @@ def _gallery_header(total: int, page: int) -> str:
     return f"**{total} game(s)**, page {page + 1}/{gallery_pages(total)}"
 
 
-class GalleryView(discord.ui.View):
-    """Prev/Next pager for the gallery. Transient by design (the game list is
-    held in memory): buttons stop working after the timeout or a bot restart,
-    and the row is removed on timeout. Just run /game gallery again."""
+class _Pager(discord.ui.View):
+    """Prev/Next pager over a fixed page count. Transient by design (the game
+    list is held in memory): buttons stop working after the timeout or a bot
+    restart, and the row is removed on timeout. Just run the command again.
+    Subclasses implement render() with the message kwargs for the page."""
 
-    def __init__(self, games: list[BoardGame], page: int = 0) -> None:
+    def __init__(self, page_count: int) -> None:
         super().__init__(timeout=300)
-        self.games = games
-        self.page = page
+        self.page = 0
+        self.page_count = page_count
         self.message: discord.Message | None = None
         self._sync_buttons()
 
+    def render(self) -> dict:
+        """content=/embeds= kwargs for the current page."""
+        raise NotImplementedError
+
     def _sync_buttons(self) -> None:
         self.prev_btn.disabled = self.page <= 0
-        self.next_btn.disabled = self.page >= gallery_pages(len(self.games)) - 1
+        self.next_btn.disabled = self.page >= self.page_count - 1
 
     async def _show(self, interaction: discord.Interaction) -> None:
         self._sync_buttons()
-        await interaction.response.edit_message(
-            content=_gallery_header(len(self.games), self.page),
-            embeds=gallery_page_embeds(self.games, self.page),
-            view=self,
-        )
+        await interaction.response.edit_message(view=self, **self.render())
 
     @discord.ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
     async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -211,7 +227,7 @@ class GalleryView(discord.ui.View):
 
     @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
     async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        self.page = min(self.page + 1, gallery_pages(len(self.games)) - 1)
+        self.page = min(self.page + 1, self.page_count - 1)
         await self._show(interaction)
 
     async def on_timeout(self) -> None:
@@ -220,6 +236,33 @@ class GalleryView(discord.ui.View):
                 await self.message.edit(view=None)
             except discord.HTTPException:
                 pass  # message may have been deleted
+
+
+class GalleryView(_Pager):
+    """Pager rendering embed cards with images."""
+
+    def __init__(self, games: list[BoardGame]) -> None:
+        self.games = games
+        super().__init__(gallery_pages(len(games)))
+
+    def render(self) -> dict:
+        return {
+            "content": _gallery_header(len(self.games), self.page),
+            "embeds": gallery_page_embeds(self.games, self.page),
+        }
+
+
+class ListView(_Pager):
+    """Pager rendering the compact text list."""
+
+    def __init__(self, total: int, pages: list[str]) -> None:
+        self.total = total
+        self.text_pages = pages
+        super().__init__(len(pages))
+
+    def render(self) -> dict:
+        header = f"**{self.total} game(s)**, page {self.page + 1}/{self.page_count}"
+        return {"content": header + "\n" + self.text_pages[self.page]}
 
 
 @game.command(name="gallery", description="Browse games as image cards, 10 per page")
@@ -245,11 +288,7 @@ async def game_gallery(
         return
 
     view = GalleryView(games)
-    view.message = await interaction.followup.send(
-        content=_gallery_header(len(games), 0),
-        embeds=gallery_page_embeds(games, 0),
-        view=view,
-    )
+    view.message = await interaction.followup.send(view=view, **view.render())
 
 
 @game.command(name="info", description="Show full details for one game")
