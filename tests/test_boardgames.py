@@ -288,6 +288,46 @@ def test_export_includes_sell_and_stocktake_columns():
     assert lost["missing"] == "yes"
 
 
+_OWNER_CSV = '''"First Name/s","Last Name","Phone Number","Email","ID"
+"Zac","Clarkson","0400000000","zac@example.com","1"
+"Kian Seen","Goh",," kian@example.com","2"
+"RBGA",,,,"3"
+"Paul","Baquiran",,,"4"
+'''
+
+
+def test_import_owners_parses_names_and_contacts():
+    from rbga.db.import_owners import parse_rows
+
+    pairs = dict(parse_rows(_OWNER_CSV.splitlines(keepends=True)))
+    # Owner.name is the first name, matching how games label owners.
+    assert pairs["Zac"] == "Zac Clarkson, 0400000000, zac@example.com"
+    assert pairs["Kian Seen"] == "Kian Seen Goh, kian@example.com"  # gaps + stray space handled
+    assert pairs["Paul"] == "Paul Baquiran"  # name-only rows still record the surname
+    assert "RBGA" not in pairs  # nothing to record for the club row
+
+
+def test_import_owners_strips_utf8_bom():
+    # The stdin path (piping the CSV over SSH) sees the raw BOM the export carries.
+    from rbga.db.import_owners import parse_rows
+
+    lines = ("﻿" + _OWNER_CSV).splitlines(keepends=True)
+    assert dict(parse_rows(lines))["Zac"] == "Zac Clarkson, 0400000000, zac@example.com"
+
+
+def test_import_owners_upserts_by_name():
+    from rbga.db.import_owners import upsert_owners
+
+    bot_bg.set_owner_contact("Zac", "old-handle")
+    created, updated = upsert_owners([("Zac", "Zac Clarkson, 0400000000"), ("Paul", "Paul Baquiran")])
+    assert (created, updated) == (1, 1)
+    assert bot_bg.get_owner_contact("Zac") == "Zac Clarkson, 0400000000"
+    assert bot_bg.get_owner_contact("Paul") == "Paul Baquiran"
+    # Idempotent: re-running updates in place, never duplicates.
+    created, updated = upsert_owners([("Paul", "Paul Baquiran")])
+    assert (created, updated) == (0, 1)
+
+
 def test_owner_contact_upsert_round_trip():
     bot_bg.set_owner_contact("Quan", "quan#1234")
     assert bot_bg.get_owner_contact("Quan") == "quan#1234"
