@@ -468,6 +468,20 @@ async def _bgg_autofill(bgg_link: str) -> tuple[dict | None, str | None]:
     return data, None
 
 
+# Fields refreshed from BGG when an edit changes the link. Title is deliberately
+# excluded: existing titles may be hand-customised (e.g. Polyhedral Dice Set ×4).
+_BGG_REFRESH_FIELDS = ("publisher", "min_players", "max_players", "image", "thumbnail", "tags")
+
+
+def merge_bgg_refresh(changes: dict, data: dict) -> dict:
+    """Fold fetched BGG data into an edit's changes; explicit args win, and
+    fields BGG has nothing for keep their stored value."""
+    for k in _BGG_REFRESH_FIELDS:
+        if k not in changes and data.get(k) is not None:
+            changes[k] = data[k]
+    return changes
+
+
 def _insert_game(**fields) -> int:
     """Create a BoardGame row (runs in a thread); returns the new id."""
     with SessionLocal() as db:
@@ -720,13 +734,13 @@ async def game_add(
     await interaction.followup.send(f"Added **{title}** (id #{new_id}).", ephemeral=True)
 
 
-@game.command(name="edit", description="Edit a game (pick it alone for a form; only set fields change)")
+@game.command(name="edit", description="Edit a game (pick it alone for a form; a new bgg_link refreshes details)")
 @app_commands.describe(
     game="Start typing a title to pick the game",
     title="New title",
     owner="New owner",
     condition="New condition",
-    bgg_link="New BoardGameGeek URL",
+    bgg_link="New BoardGameGeek URL; re-fetches publisher, players, image, and tags",
     publisher="New publisher",
     min_players="New minimum players",
     max_players="New maximum players",
@@ -784,12 +798,42 @@ async def game_edit(
         return
 
     await interaction.response.defer(ephemeral=True)
+
+    # A changed link means the stored auto-filled details describe the old
+    # game: re-fetch BGG and refresh them (explicit args above still win).
+    warn = ""
+    if "bgg_link" in changes:
+        bgg_id = extract_bgg_id(changes["bgg_link"])
+        if bgg_id is None:
+            await interaction.followup.send(
+                "That doesn't look like a BoardGameGeek link. Paste one like "
+                "`https://boardgamegeek.com/boardgame/13/catan`. Nothing was changed.",
+                ephemeral=True,
+            )
+            return
+        try:
+            data = await fetch_game(bgg_id)
+        except BGGNotConfigured:
+            data = None
+            warn = " Link saved, but details weren't refreshed: `BGG_API_TOKEN` is unset."
+        except Exception:
+            data = None
+        if data:
+            merge_bgg_refresh(changes, data)
+        elif not warn:
+            await interaction.followup.send(
+                f"Couldn't fetch BGG id {bgg_id}. It may not exist, or BGG is busy. "
+                "Try again. Nothing was changed.",
+                ephemeral=True,
+            )
+            return
+
     name = await _in_thread(lambda: _apply_changes(game, changes))
     if name is None:
         await interaction.followup.send("No game with that id.", ephemeral=True)
     else:
         fields = ", ".join(changes)
-        await interaction.followup.send(f"Updated **{name}** ({fields}).", ephemeral=True)
+        await interaction.followup.send(f"Updated **{name}** ({fields}).{warn}", ephemeral=True)
 
 
 @game.command(name="remove", description="Delete a game from the inventory")

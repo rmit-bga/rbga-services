@@ -334,3 +334,113 @@ def test_edit_modal_prefills_current_values():
 def test_edit_modal_title_truncated_to_discord_cap():
     g = _game(id=148, title="Arkham Horror: The Card Game and a very long name")
     assert len(bot_bg.EditGameModal(g).title) <= 45
+
+
+# --- BGG refresh on link edit ------------------------------------------------
+_BGG_DATA = {
+    "title": "Catan",
+    "publisher": "KOSMOS",
+    "min_players": 3,
+    "max_players": 4,
+    "image": "https://cf.geekdo-images.com/catan.jpg",
+    "thumbnail": "https://cf.geekdo-images.com/catan__thumb.jpg",
+    "tags": ["Economic", "Negotiation"],
+}
+
+
+def test_merge_bgg_refresh_fills_autofilled_fields():
+    changes = {"bgg_link": "https://boardgamegeek.com/boardgame/13/catan"}
+    merged = bot_bg.merge_bgg_refresh(changes, _BGG_DATA)
+    assert merged is changes  # in-place, returned for convenience
+    assert merged["publisher"] == "KOSMOS"
+    assert merged["min_players"] == 3 and merged["max_players"] == 4
+    assert merged["image"] == "https://cf.geekdo-images.com/catan.jpg"
+    assert merged["thumbnail"] == "https://cf.geekdo-images.com/catan__thumb.jpg"
+    assert merged["tags"] == ["Economic", "Negotiation"]
+
+
+def test_merge_bgg_refresh_explicit_args_win():
+    changes = {"bgg_link": "x", "publisher": "Hand Entered", "tags": ["Custom"]}
+    merged = bot_bg.merge_bgg_refresh(changes, _BGG_DATA)
+    assert merged["publisher"] == "Hand Entered"
+    assert merged["tags"] == ["Custom"]
+    assert merged["min_players"] == 3  # non-explicit fields still refresh
+
+
+def test_merge_bgg_refresh_skips_fields_bgg_lacks():
+    # BGG returning nothing for a field must not null the stored value.
+    merged = bot_bg.merge_bgg_refresh({"bgg_link": "x"}, {"publisher": None, "tags": None})
+    assert merged == {"bgg_link": "x"}
+
+
+def test_merge_bgg_refresh_never_injects_title():
+    merged = bot_bg.merge_bgg_refresh({"bgg_link": "x"}, _BGG_DATA)
+    assert "title" not in merged  # hand-customised titles must survive a link edit
+
+
+class _FakeInteraction:
+    """Just enough of discord.Interaction for the command callbacks."""
+
+    class _Response:
+        async def defer(self, ephemeral: bool = False) -> None:
+            pass
+
+    class _Followup:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        async def send(self, content=None, **kwargs) -> None:
+            self.messages.append(content)
+
+    def __init__(self) -> None:
+        self.response = self._Response()
+        self.followup = self._Followup()
+
+
+def test_edit_with_new_link_refreshes_stale_bgg_fields(monkeypatch):
+    with SessionLocal() as db:
+        g = BoardGame(
+            title="Catan (RBGA copy)",
+            bgg_link="https://boardgamegeek.com/boardgame/999/wrong-game",
+            publisher="Stale Publisher",
+            image="https://cf.geekdo-images.com/wrong.jpg",
+        )
+        db.add(g)
+        db.commit()
+        gid = g.id
+
+    async def fake_fetch(bgg_id):
+        assert bgg_id == 13
+        return dict(_BGG_DATA)
+
+    monkeypatch.setattr(bot_bg, "fetch_game", fake_fetch)
+    ix = _FakeInteraction()
+    asyncio.run(
+        bot_bg.game_edit.callback(
+            ix, gid, bgg_link="https://boardgamegeek.com/boardgame/13/catan"
+        )
+    )
+
+    assert "Updated" in ix.followup.messages[0]
+    with SessionLocal() as db:
+        g = db.get(BoardGame, gid)
+        assert g.bgg_link == "https://boardgamegeek.com/boardgame/13/catan"
+        assert g.publisher == "KOSMOS"  # stale value replaced
+        assert g.image == "https://cf.geekdo-images.com/catan.jpg"
+        assert g.min_players == 3 and g.max_players == 4
+        assert g.title == "Catan (RBGA copy)"  # hand-customised title kept
+
+
+def test_edit_with_bad_link_changes_nothing(monkeypatch):
+    with SessionLocal() as db:
+        g = BoardGame(title="Catan", publisher="KOSMOS")
+        db.add(g)
+        db.commit()
+        gid = g.id
+
+    ix = _FakeInteraction()
+    asyncio.run(bot_bg.game_edit.callback(ix, gid, bgg_link="https://example.com/nope"))
+
+    assert "Nothing was changed" in ix.followup.messages[0]
+    with SessionLocal() as db:
+        assert db.get(BoardGame, gid).bgg_link is None
