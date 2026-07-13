@@ -10,9 +10,10 @@ Features:
   * complaints: routing + ticket handling (rbga/bot/complaints.py). Handled via
     the API (reviewer token), never direct DB access; metadata only in Discord.
 
-Reads are open to everyone; mutations are gated to the exec role named by
-`DISCORD_KEYS_ROLE` (see rbga/bot/common.py). If that var is unset we fail closed
-and deny all mutations.
+Board-game reads are open to everyone; the key commands (including the reads —
+who holds a cabinet key is exec business, not members') and all mutations are
+gated to the exec role named by `DISCORD_KEYS_ROLE` (see rbga/bot/common.py).
+If that var is unset we fail closed and deny everything gated.
 
 The SQLAlchemy session is synchronous, so every DB touch runs in a worker thread
 (`_in_thread`) to keep the event loop free; a blocked loop would blow past
@@ -67,6 +68,7 @@ async def colour_autocomplete(
 
 
 @tree.command(name="keys", description="List all cabinet keys and who holds them")
+@app_commands.check(require_exec_role)
 async def keys_cmd(interaction: discord.Interaction):
     await interaction.response.defer()
 
@@ -85,6 +87,7 @@ async def keys_cmd(interaction: discord.Interaction):
 @tree.command(name="whohas", description="Who currently holds a given key?")
 @app_commands.describe(colour="The key colour")
 @app_commands.autocomplete(colour=colour_autocomplete)
+@app_commands.check(require_exec_role)
 async def whohas_cmd(interaction: discord.Interaction, colour: str):
     await interaction.response.defer()
 

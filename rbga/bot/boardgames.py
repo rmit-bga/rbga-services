@@ -1,8 +1,9 @@
 """Discord CRUD for the board-game inventory: the `/game` command group.
 
 Writes the same `board_games` table the REST API serves (rbga/api/routers/
-boardgames.py), via the shared db layer. List/gallery/info/export are open to
-everyone; add/edit/remove are gated to the exec role (see rbga/bot/common.py).
+boardgames.py), via the shared db layer. List/gallery/info are open to
+everyone; add/edit/remove/export are gated to the exec role (see
+rbga/bot/common.py) — export because the CSV carries prices and owner names.
 
 Titles aren't unique (e.g. Polyhedral Dice Set ×4), so info/edit/remove take a
 numeric id, disambiguated for the user by autocomplete that shows "#id Title".
@@ -360,6 +361,7 @@ def export_csv(games: list[BoardGame]) -> str:
     tag="Only include games with this tag",
 )
 @app_commands.autocomplete(owner=owner_autocomplete)
+@app_commands.check(require_exec_role)
 async def game_export(
     interaction: discord.Interaction,
     owner: str | None = None,
