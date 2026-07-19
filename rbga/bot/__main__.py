@@ -110,12 +110,15 @@ async def whohas_cmd(interaction: discord.Interaction, colour: str):
 
 
 @tree.command(name="take", description="Record that you (or someone) took a key")
-@app_commands.describe(colour="The key colour", holder="Who now holds it (defaults to you)")
+@app_commands.describe(colour="The key colour", holder="Who now holds it — pick a member (defaults to you)")
 @app_commands.autocomplete(colour=colour_autocomplete)
 @app_commands.check(require_keys_role)
-async def take_cmd(interaction: discord.Interaction, colour: str, holder: str | None = None):
+async def take_cmd(
+    interaction: discord.Interaction, colour: str, holder: discord.Member | None = None
+):
     await interaction.response.defer(ephemeral=True)
-    holder = holder or interaction.user.display_name
+    # interaction.user is always a Member here: require_keys_role denies DMs.
+    holder = (holder or interaction.user).display_name
 
     def mutate() -> tuple[bool, str | None]:
         with SessionLocal() as db:
