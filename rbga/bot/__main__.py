@@ -11,9 +11,10 @@ Features:
     the API (reviewer token), never direct DB access; metadata only in Discord.
 
 Board-game reads are open to everyone; the key commands (including the reads —
-who holds a cabinet key is exec business, not members') and all mutations are
-gated to the exec role named by `DISCORD_KEYS_ROLE` (see rbga/bot/common.py).
-If that var is unset we fail closed and deny everything gated.
+who holds a cabinet key is exec/committee business, not members') are gated to
+the roles named by `DISCORD_KEYS_ROLE` + `DISCORD_COMMITTEE_ROLE`, and all
+other mutations to `DISCORD_KEYS_ROLE` alone (see rbga/bot/common.py).
+If those vars are unset we fail closed and deny everything gated.
 
 The SQLAlchemy session is synchronous, so every DB touch runs in a worker thread
 (`_in_thread`) to keep the event loop free; a blocked loop would blow past
@@ -29,10 +30,14 @@ from sqlalchemy import select
 from ..db.database import SessionLocal
 from ..db.models import Key
 from . import boardgames, complaints
-from .common import EXEC_ROLE, _in_thread, require_exec_role
+from .common import EXEC_ROLE, KEYS_ROLES, _in_thread, require_keys_role
 
 TOKEN = os.environ.get("DISCORD_TOKEN")
 GUILD_ID = os.environ.get("DISCORD_GUILD_ID")  # set for instant command sync in one guild
+
+# The commands gated by require_keys_role (exec or committee) rather than
+# require_exec_role; the error handler names the right roles when denying.
+KEY_COMMAND_NAMES = {"keys", "whohas", "take", "return", "addkey", "removekey"}
 
 intents = discord.Intents.default()
 
@@ -68,7 +73,7 @@ async def colour_autocomplete(
 
 
 @tree.command(name="keys", description="List all cabinet keys and who holds them")
-@app_commands.check(require_exec_role)
+@app_commands.check(require_keys_role)
 async def keys_cmd(interaction: discord.Interaction):
     await interaction.response.defer()
 
@@ -87,7 +92,7 @@ async def keys_cmd(interaction: discord.Interaction):
 @tree.command(name="whohas", description="Who currently holds a given key?")
 @app_commands.describe(colour="The key colour")
 @app_commands.autocomplete(colour=colour_autocomplete)
-@app_commands.check(require_exec_role)
+@app_commands.check(require_keys_role)
 async def whohas_cmd(interaction: discord.Interaction, colour: str):
     await interaction.response.defer()
 
@@ -107,7 +112,7 @@ async def whohas_cmd(interaction: discord.Interaction, colour: str):
 @tree.command(name="take", description="Record that you (or someone) took a key")
 @app_commands.describe(colour="The key colour", holder="Who now holds it (defaults to you)")
 @app_commands.autocomplete(colour=colour_autocomplete)
-@app_commands.check(require_exec_role)
+@app_commands.check(require_keys_role)
 async def take_cmd(interaction: discord.Interaction, colour: str, holder: str | None = None):
     await interaction.response.defer(ephemeral=True)
     holder = holder or interaction.user.display_name
@@ -136,7 +141,7 @@ async def take_cmd(interaction: discord.Interaction, colour: str, holder: str | 
 @tree.command(name="return", description="Hand a key back (clears its holder)")
 @app_commands.describe(colour="The key colour")
 @app_commands.autocomplete(colour=colour_autocomplete)
-@app_commands.check(require_exec_role)
+@app_commands.check(require_keys_role)
 async def return_cmd(interaction: discord.Interaction, colour: str):
     await interaction.response.defer(ephemeral=True)
 
@@ -163,7 +168,7 @@ async def return_cmd(interaction: discord.Interaction, colour: str):
 
 @tree.command(name="addkey", description="Register a new cabinet key")
 @app_commands.describe(colour="The key colour", campus="Which campus it belongs to")
-@app_commands.check(require_exec_role)
+@app_commands.check(require_keys_role)
 async def addkey_cmd(interaction: discord.Interaction, colour: str, campus: str):
     await interaction.response.defer(ephemeral=True)
 
@@ -185,7 +190,7 @@ async def addkey_cmd(interaction: discord.Interaction, colour: str, campus: str)
 @tree.command(name="removekey", description="Delete a cabinet key")
 @app_commands.describe(colour="The key colour")
 @app_commands.autocomplete(colour=colour_autocomplete)
-@app_commands.check(require_exec_role)
+@app_commands.check(require_keys_role)
 async def removekey_cmd(interaction: discord.Interaction, colour: str):
     await interaction.response.defer(ephemeral=True)
 
@@ -211,7 +216,10 @@ async def on_app_command_error(
 ):
     """Reply with a friendly message; never leak a traceback to the channel."""
     if isinstance(error, app_commands.CheckFailure):
-        need = f"the {EXEC_ROLE} role" if EXEC_ROLE else "a role that isn't configured yet"
+        # Key commands accept exec OR committee; everything else is exec-only.
+        cmd = interaction.command.name if interaction.command else None
+        roles = KEYS_ROLES if cmd in KEY_COMMAND_NAMES else ([EXEC_ROLE] if EXEC_ROLE else [])
+        need = f"the {' or '.join(roles)} role" if roles else "a role that isn't configured yet"
         message = f"You need {need} to do that."
     else:
         message = "Something went wrong handling that command. Please try again."

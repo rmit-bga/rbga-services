@@ -71,6 +71,7 @@ services:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       DISCORD_KEYS_ROLE: ${DISCORD_KEYS_ROLE:-}
+      DISCORD_COMMITTEE_ROLE: ${DISCORD_COMMITTEE_ROLE:-}
       BGG_API_TOKEN: ${BGG_API_TOKEN:-}
       # Complaints handling: the bot reaches complaints via the API (reviewer
       # token), never the DB, so its restricted DB role is unchanged.
