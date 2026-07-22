@@ -15,7 +15,7 @@ from typing import Literal
 
 import discord
 from discord import app_commands
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from ..bgg import BGGNotConfigured, extract_bgg_id, fetch_game
 from ..db.database import SessionLocal
@@ -103,10 +103,36 @@ async def owner_autocomplete(
     ][:25]
 
 
+async def location_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """Suggest distinct existing locations, filtered by what's typed. De-duped
+    case-insensitively so a lingering 'city'/'City' split shows once; typing a
+    brand-new location is still allowed (it's a free-text option)."""
+    def query() -> list[str]:
+        with SessionLocal() as db:
+            stmt = select(BoardGame.location).where(BoardGame.location.is_not(None)).distinct()
+            return sorted(l for (l,) in db.execute(stmt).all() if l)
+
+    locs = await _in_thread(query)
+    lowered = current.lower()
+    seen: set[str] = set()
+    out: list[app_commands.Choice[str]] = []
+    for l in locs:
+        if lowered in l.lower() and l.casefold() not in seen:
+            seen.add(l.casefold())
+            out.append(app_commands.Choice(name=l, value=l))
+    return out[:25]
+
+
 # --- read (open to everyone) ------------------------------------------------
 
 def _query_games(
-    owner: str | None, condition: str | None, search: str | None, tag: str | None
+    owner: str | None,
+    condition: str | None,
+    search: str | None,
+    tag: str | None,
+    location: str | None = None,
 ) -> list[BoardGame]:
     """Shared filter query for /game list and /game gallery (runs in a thread)."""
     with SessionLocal() as db:
@@ -117,6 +143,9 @@ def _query_games(
             stmt = stmt.where(BoardGame.condition == condition)
         if search:
             stmt = stmt.where(BoardGame.title.ilike(f"%{search}%"))
+        if location:
+            # Case-insensitive so it's robust against any pre-canonicalization dupes.
+            stmt = stmt.where(func.lower(BoardGame.location) == location.lower())
         games = list(db.scalars(stmt.order_by(BoardGame.title)).all())
     if tag:
         # JSON column, so filter in Python (portable; the inventory is small).
@@ -131,18 +160,20 @@ def _query_games(
     condition="Only show games in this condition",
     search="Only show games whose title contains this text",
     tag="Only show games with this tag",
+    location="Only show games stored at this location",
 )
-@app_commands.autocomplete(owner=owner_autocomplete)
+@app_commands.autocomplete(owner=owner_autocomplete, location=location_autocomplete)
 async def game_list(
     interaction: discord.Interaction,
     owner: str | None = None,
     condition: Condition | None = None,
     search: str | None = None,
     tag: str | None = None,
+    location: str | None = None,
 ):
     await interaction.response.defer()
 
-    games = await _in_thread(lambda: _query_games(owner, condition, search, tag))
+    games = await _in_thread(lambda: _query_games(owner, condition, search, tag, location))
     if not games:
         await interaction.followup.send("No board games match that.")
         return
@@ -304,18 +335,20 @@ class ListView(_Pager):
     condition="Only show games in this condition",
     search="Only show games whose title contains this text",
     tag="Only show games with this tag",
+    location="Only show games stored at this location",
 )
-@app_commands.autocomplete(owner=owner_autocomplete)
+@app_commands.autocomplete(owner=owner_autocomplete, location=location_autocomplete)
 async def game_gallery(
     interaction: discord.Interaction,
     owner: str | None = None,
     condition: Condition | None = None,
     search: str | None = None,
     tag: str | None = None,
+    location: str | None = None,
 ):
     await interaction.response.defer()
 
-    games = await _in_thread(lambda: _query_games(owner, condition, search, tag))
+    games = await _in_thread(lambda: _query_games(owner, condition, search, tag, location))
     if not games:
         await interaction.followup.send("No board games match that.")
         return
@@ -359,8 +392,9 @@ def export_csv(games: list[BoardGame]) -> str:
     condition="Only include games in this condition",
     search="Only include games whose title contains this text",
     tag="Only include games with this tag",
+    location="Only include games stored at this location",
 )
-@app_commands.autocomplete(owner=owner_autocomplete)
+@app_commands.autocomplete(owner=owner_autocomplete, location=location_autocomplete)
 @app_commands.check(require_exec_role)
 async def game_export(
     interaction: discord.Interaction,
@@ -368,10 +402,11 @@ async def game_export(
     condition: Condition | None = None,
     search: str | None = None,
     tag: str | None = None,
+    location: str | None = None,
 ):
     await interaction.response.defer()
 
-    games = await _in_thread(lambda: _query_games(owner, condition, search, tag))
+    games = await _in_thread(lambda: _query_games(owner, condition, search, tag, location))
     if not games:
         await interaction.followup.send("No board games match that.")
         return
@@ -611,6 +646,24 @@ def merge_bgg_refresh(changes: dict, data: dict) -> dict:
     return changes
 
 
+def canonical_location(raw: str | None) -> str | None:
+    """Trim input and reuse an existing location's spelling when it matches
+    case-insensitively, so 'city' is stored as the existing 'City'. A brand-new
+    location is kept as typed; blank/None -> None. Runs its own session, so call
+    it inside an _in_thread closure."""
+    if raw is None or not raw.strip():
+        return None
+    val = raw.strip()
+    with SessionLocal() as db:
+        existing = db.scalars(
+            select(BoardGame.location).where(BoardGame.location.is_not(None)).distinct()
+        ).all()
+    for loc in existing:
+        if loc and loc.casefold() == val.casefold():
+            return loc
+    return val
+
+
 def _insert_game(**fields) -> int:
     """Create a BoardGame row (runs in a thread); returns the new id."""
     with SessionLocal() as db:
@@ -801,7 +854,7 @@ class EditGameModal(discord.ui.Modal):
     notes="Anything else worth recording",
     tags="Comma-separated tags (auto-filled from BGG categories if omitted)",
 )
-@app_commands.autocomplete(owner=owner_autocomplete)
+@app_commands.autocomplete(owner=owner_autocomplete, location=location_autocomplete)
 @app_commands.check(require_exec_role)
 async def game_add(
     interaction: discord.Interaction,
@@ -864,7 +917,7 @@ async def game_add(
             publisher=publisher,
             min_players=min_players,
             max_players=max_players,
-            location=location,
+            location=canonical_location(location),
             notes=notes,
             tags=tag_list,
         )
@@ -889,7 +942,9 @@ async def game_add(
     price="New purchase value in dollars",
     sell_price="New asking price in dollars",
 )
-@app_commands.autocomplete(game=game_autocomplete, owner=owner_autocomplete)
+@app_commands.autocomplete(
+    game=game_autocomplete, owner=owner_autocomplete, location=location_autocomplete
+)
 @app_commands.check(require_exec_role)
 async def game_edit(
     interaction: discord.Interaction,
@@ -967,6 +1022,12 @@ async def game_edit(
             )
             return
 
+    # Reuse an existing location's spelling so 'city' doesn't fork from 'City'.
+    if "location" in changes:
+        changes["location"] = await _in_thread(
+            lambda: canonical_location(changes["location"])
+        )
+
     # Reassigning the owner may orphan the old one's contact; snapshot it first.
     old_owner = None
     if "owner" in changes:
@@ -983,6 +1044,140 @@ async def game_edit(
             await prompt_owner_contact_upkeep(
                 interaction, old_owner=old_owner, new_owner=changes["owner"]
             )
+
+
+# --- bulk edit (exec only) -----------------------------------------------------
+
+def _bulk_apply(ids: list[int], changes: dict) -> int:
+    """Set the same field(s) on many games in one statement (runs in a thread).
+    Returns how many rows were updated."""
+    with SessionLocal() as db:
+        result = db.execute(
+            update(BoardGame).where(BoardGame.id.in_(ids)).values(**changes)
+        )
+        db.commit()
+        return result.rowcount
+
+
+def _summarise_changes(changes: dict) -> str:
+    """'location → Bundoora, owner → RBGA' for a confirm/echo message."""
+    return ", ".join(f"{k} → {v}" for k, v in changes.items())
+
+
+class BulkEditConfirmView(discord.ui.View):
+    """Confirm a bulk field change before it's written. Ephemeral and transient
+    (same lifecycle as the other views here): after the 5-minute timeout, just
+    run /game bulk-edit again. Any exec may confirm (interaction_check)."""
+
+    def __init__(self, game_ids: list[int], changes: dict) -> None:
+        super().__init__(timeout=300)
+        self.game_ids = game_ids
+        self.changes = changes
+        self.message: discord.Message | None = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if require_exec_role(interaction):
+            return True
+        await interaction.response.send_message(
+            "Only execs can confirm a bulk edit.", ephemeral=True
+        )
+        return False
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
+    async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        n = await _in_thread(lambda: _bulk_apply(self.game_ids, self.changes))
+        self.stop()
+        await interaction.response.edit_message(
+            content=f"Updated **{n} game(s)** ({_summarise_changes(self.changes)}).",
+            view=None,
+        )
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.stop()
+        await interaction.response.edit_message(content="Nothing changed.", view=None)
+
+    async def on_timeout(self) -> None:
+        if self.message:
+            try:
+                await self.message.edit(
+                    content="Bulk edit timed out; nothing changed. Run /game bulk-edit again.",
+                    view=None,
+                )
+            except discord.HTTPException:
+                pass
+
+
+@game.command(name="bulk-edit", description="Change a field on many games at once (filter, then set)")
+@app_commands.describe(
+    owner="Filter: only games owned by this person/RBGA",
+    condition="Filter: only games in this condition",
+    location="Filter: only games stored here",
+    tag="Filter: only games with this tag",
+    search="Filter: only games whose title contains this text",
+    set_location="New location for every matched game",
+    set_owner="New owner for every matched game",
+    set_condition="New condition for every matched game",
+)
+@app_commands.autocomplete(
+    owner=owner_autocomplete,
+    location=location_autocomplete,
+    set_owner=owner_autocomplete,
+    set_location=location_autocomplete,
+)
+@app_commands.check(require_exec_role)
+async def game_bulk_edit(
+    interaction: discord.Interaction,
+    owner: str | None = None,
+    condition: Condition | None = None,
+    location: str | None = None,
+    tag: str | None = None,
+    search: str | None = None,
+    set_location: str | None = None,
+    set_owner: str | None = None,
+    set_condition: Condition | None = None,
+):
+    await interaction.response.defer(ephemeral=True)
+
+    # What to change. location is canonicalised so a bulk move reuses an
+    # existing spelling ('city' -> 'City') like /game add and /game edit.
+    changes: dict = {}
+    if set_location is not None:
+        changes["location"] = await _in_thread(lambda: canonical_location(set_location))
+    if set_owner is not None:
+        changes["owner"] = set_owner
+    if set_condition is not None:
+        changes["condition"] = set_condition
+    if not changes:
+        await interaction.followup.send(
+            "Tell me what to change: set at least one of set_location, set_owner, "
+            "or set_condition.",
+            ephemeral=True,
+        )
+        return
+
+    games = await _in_thread(lambda: _query_games(owner, condition, search, tag, location))
+    if not games:
+        await interaction.followup.send("No games match that.", ephemeral=True)
+        return
+
+    ids = [g.id for g in games]
+    sample = ", ".join(g.title for g in games[:5])
+    if len(games) > 5:
+        sample += ", …"
+    note = (
+        "\n\nNote: owner contacts aren't auto-checked on a bulk change; "
+        "tidy them with /owner if needed."
+        if "owner" in changes
+        else ""
+    )
+    view = BulkEditConfirmView(ids, changes)
+    view.message = await interaction.followup.send(
+        f"Update **{len(games)} game(s)** ({_summarise_changes(changes)})?\n"
+        f"_{sample}_{note}",
+        view=view,
+        ephemeral=True,
+    )
 
 
 @game.command(name="remove", description="Delete a game from the inventory")

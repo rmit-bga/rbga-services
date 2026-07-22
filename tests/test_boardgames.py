@@ -3,7 +3,7 @@ the BGG enrichment pass, and the /game gallery rendering."""
 import asyncio
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from rbga.bgg import parse_thing
 from rbga.bot import boardgames as bot_bg
@@ -564,3 +564,130 @@ def test_edit_with_bad_link_changes_nothing(monkeypatch):
     assert "Nothing was changed" in ix.followup.messages[0]
     with SessionLocal() as db:
         assert db.get(BoardGame, gid).bgg_link is None
+
+
+# --- location: canonicalization, autocomplete, filter, bulk edit ------------
+def _insert_loc(title: str, location: str | None) -> int:
+    with SessionLocal() as db:
+        g = BoardGame(title=title, location=location)
+        db.add(g)
+        db.commit()
+        return g.id
+
+
+def test_canonical_location_reuses_existing_spelling():
+    _insert_loc("Catan", "City")
+    assert bot_bg.canonical_location("city") == "City"  # case-folded match
+    assert bot_bg.canonical_location("  CITY  ") == "City"  # trimmed too
+    assert bot_bg.canonical_location("Bundoora") == "Bundoora"  # novel, kept as typed
+    assert bot_bg.canonical_location("") is None
+    assert bot_bg.canonical_location("   ") is None
+    assert bot_bg.canonical_location(None) is None
+
+
+def test_location_autocomplete_distinct_deduped_and_filtered():
+    _insert_loc("Catan", "City")
+    _insert_loc("Azul", "city")  # a lingering case-dupe
+    _insert_loc("Wingspan", "Bundoora")
+    _insert_loc("Uno", None)  # must not surface a blank choice
+
+    ix = _FakeInteraction()
+    names = [c.name for c in asyncio.run(bot_bg.location_autocomplete(ix, ""))]
+    # 'City'/'city' collapse to a single suggestion; None is dropped.
+    assert sorted(n.lower() for n in names) == ["bundoora", "city"]
+
+    filtered = [c.value for c in asyncio.run(bot_bg.location_autocomplete(ix, "bun"))]
+    assert filtered == ["Bundoora"]
+
+
+def test_query_games_location_filter_is_case_insensitive():
+    _insert_loc("Catan", "City")
+    _insert_loc("Azul", "City")
+    _insert_loc("Wingspan", "Bundoora")
+
+    titles = sorted(g.title for g in bot_bg._query_games(None, None, None, None, "city"))
+    assert titles == ["Azul", "Catan"]
+    assert bot_bg._query_games(None, None, None, None, "nowhere") == []
+
+
+def test_game_add_canonicalises_location():
+    _insert_loc("Catan", "City")
+    ix = _FakeInteraction()
+    asyncio.run(bot_bg.game_add.callback(ix, title="Azul", location="city"))
+
+    with SessionLocal() as db:
+        azul = db.scalars(select(BoardGame).filter_by(title="Azul")).one()
+        assert azul.location == "City"  # stored under the existing spelling
+
+
+def test_game_edit_canonicalises_location():
+    _insert_loc("Catan", "City")
+    gid = _insert_loc("Azul", None)
+
+    ix = _FakeInteraction()
+    asyncio.run(bot_bg.game_edit.callback(ix, gid, location="city"))
+
+    with SessionLocal() as db:
+        assert db.get(BoardGame, gid).location == "City"
+
+
+def test_bulk_edit_moves_matched_games_on_confirm():
+    for t in ("Catan", "Azul", "Wingspan"):
+        _insert_loc(t, "City")
+    _insert_loc("Uno", "Bundoora")  # already there: must be left alone
+
+    ix = _FakeInteraction()
+    asyncio.run(
+        bot_bg.game_bulk_edit.callback(ix, location="City", set_location="Bundoora")
+    )
+    # A confirmation view is offered, not an immediate write.
+    assert "3 game(s)" in ix.followup.messages[0]
+    view = ix.followup.views[0]
+    assert isinstance(view, bot_bg.BulkEditConfirmView)
+    with SessionLocal() as db:  # nothing written yet
+        assert db.scalar(
+            select(func.count()).select_from(BoardGame).where(BoardGame.location == "Bundoora")
+        ) == 1
+
+    press = _FakeInteraction()
+    asyncio.run(view.confirm_btn.callback(press))
+    assert "Updated **3 game(s)**" in press.response.edited[0]["content"]
+    with SessionLocal() as db:
+        assert db.scalar(
+            select(func.count()).select_from(BoardGame).where(BoardGame.location == "Bundoora")
+        ) == 4
+        assert db.scalar(
+            select(func.count()).select_from(BoardGame).where(BoardGame.location == "City")
+        ) == 0
+
+
+def test_bulk_edit_cancel_writes_nothing():
+    _insert_loc("Catan", "City")
+    ix = _FakeInteraction()
+    asyncio.run(
+        bot_bg.game_bulk_edit.callback(ix, location="City", set_location="Bundoora")
+    )
+    view = ix.followup.views[0]
+    press = _FakeInteraction()
+    asyncio.run(view.cancel_btn.callback(press))
+    assert press.response.edited[0]["content"] == "Nothing changed."
+    with SessionLocal() as db:
+        assert db.scalars(select(BoardGame).filter_by(title="Catan")).one().location == "City"
+
+
+def test_bulk_edit_requires_a_setter():
+    _insert_loc("Catan", "City")
+    ix = _FakeInteraction()
+    asyncio.run(bot_bg.game_bulk_edit.callback(ix, location="City"))
+    assert "Tell me what to change" in ix.followup.messages[0]
+    assert ix.followup.views[0] is None  # no confirm view offered
+
+
+def test_bulk_edit_reports_no_match():
+    _insert_loc("Catan", "Bundoora")
+    ix = _FakeInteraction()
+    asyncio.run(
+        bot_bg.game_bulk_edit.callback(ix, location="Nowhere", set_location="City")
+    )
+    assert "No games match that." in ix.followup.messages[0]
+    assert ix.followup.views[0] is None
