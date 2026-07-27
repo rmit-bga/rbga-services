@@ -360,6 +360,39 @@ def test_parse_money_rejects_junk():
         bot_bg.parse_money("cheap")
 
 
+@pytest.mark.parametrize("raw", ["-5", "$-5", "-0.01"])
+def test_parse_money_rejects_negative(raw):
+    with pytest.raises(ValueError, match="negative"):
+        bot_bg.parse_money(raw)
+
+
+def test_build_game_embed_always_shows_every_field():
+    # A bare game (only a title) must still render every field, unset ones as "—".
+    embed = bot_bg.build_game_embed(_game(id=1))
+    fields = {f.name: f.value for f in embed.fields}
+    for name in (
+        "Owner", "Condition", "Players", "Publisher", "Price", "Sell",
+        "Location", "BGG", "Stocktake", "Tags", "Notes",
+    ):
+        assert fields[name] == "—", f"{name} should be the em-dash placeholder"
+
+
+def test_build_game_embed_shows_populated_values():
+    embed = bot_bg.build_game_embed(
+        _game(
+            id=2, title="Catan", owner="RBGA", condition="Good", price=45.0,
+            min_players=3, max_players=4, publisher="KOSMOS", location="Shelf A",
+            bgg_link="https://boardgamegeek.com/boardgame/13/catan",
+            tags=["Economic"], notes="Well loved",
+        )
+    )
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["Owner"] == "RBGA"
+    assert fields["Players"] == "3-4"
+    assert fields["Price"] == "$45.00"  # positive, never "$-45.00"
+    assert fields["Tags"] == "Economic"
+
+
 def test_edit_modal_prefills_current_values():
     g = _game(id=7, title="Catan", owner="RBGA", condition="Fair", price=45.0)
     modal = bot_bg.EditGameModal(g)

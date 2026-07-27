@@ -419,6 +419,45 @@ async def game_export(
     )
 
 
+# Placeholder for an empty field, so /game info always shows every field and
+# an unset value is visibly unset (Discord rejects empty-string field values).
+_UNSET = "—"
+
+
+def build_game_embed(g: BoardGame) -> discord.Embed:
+    """Full-detail embed for one game. Every field is always shown; empties
+    render as an em dash so nothing is silently omitted."""
+    if g.min_players or g.max_players:
+        lo, hi = g.min_players, g.max_players
+        players = f"{lo}-{hi}" if lo and hi else str(lo or hi)
+    else:
+        players = _UNSET
+    if g.missing:
+        stocktake = "⚠ MISSING"
+    elif g.last_seen_at:
+        stocktake = f"Last seen {g.last_seen_at:%Y-%m-%d}"
+    else:
+        stocktake = _UNSET
+
+    embed = discord.Embed(title=g.title, url=g.bgg_link or None)
+    embed.add_field(name="Owner", value=g.owner or _UNSET)
+    embed.add_field(name="Condition", value=g.condition or _UNSET)
+    embed.add_field(name="Players", value=players)
+    embed.add_field(name="Publisher", value=g.publisher or _UNSET)
+    embed.add_field(name="Price", value=f"${g.price:.2f}" if g.price is not None else _UNSET)
+    embed.add_field(name="Sell", value=sell_price_display(g) or _UNSET)
+    embed.add_field(name="Location", value=g.location or _UNSET)
+    embed.add_field(name="BGG", value=g.bgg_link or _UNSET)
+    embed.add_field(name="Stocktake", value=stocktake)
+    embed.add_field(name="Tags", value=", ".join(g.tags) if g.tags else _UNSET, inline=False)
+    embed.add_field(name="Notes", value=g.notes or _UNSET, inline=False)
+    # BGG imports store a real image URL; old CSV rows store a filename we can't render.
+    if g.image and g.image.startswith(("http://", "https://")):
+        embed.set_image(url=g.image)
+    embed.set_footer(text=f"id #{g.id}")
+    return embed
+
+
 @game.command(name="info", description="Show full details for one game")
 @app_commands.describe(game="Start typing a title to pick the game")
 @app_commands.autocomplete(game=game_autocomplete)
@@ -434,37 +473,7 @@ async def game_info(interaction: discord.Interaction, game: int):
         await interaction.followup.send("No game with that id.")
         return
 
-    embed = discord.Embed(title=g.title, url=g.bgg_link or None)
-    if g.owner:
-        embed.add_field(name="Owner", value=g.owner)
-    if g.condition:
-        embed.add_field(name="Condition", value=g.condition)
-    if g.min_players or g.max_players:
-        lo, hi = g.min_players, g.max_players
-        players = f"{lo}-{hi}" if lo and hi else str(lo or hi)
-        embed.add_field(name="Players", value=players)
-    if g.publisher:
-        embed.add_field(name="Publisher", value=g.publisher)
-    if g.price is not None:
-        embed.add_field(name="Price", value=f"${g.price:.2f}")
-    sell = sell_price_display(g)
-    if sell:
-        embed.add_field(name="Sell", value=sell)
-    if g.location:
-        embed.add_field(name="Location", value=g.location)
-    if g.missing:
-        embed.add_field(name="Stocktake", value="⚠ MISSING")
-    elif g.last_seen_at:
-        embed.add_field(name="Stocktake", value=f"Last seen {g.last_seen_at:%Y-%m-%d}")
-    if g.tags:
-        embed.add_field(name="Tags", value=", ".join(g.tags), inline=False)
-    if g.notes:
-        embed.add_field(name="Notes", value=g.notes, inline=False)
-    # BGG imports store a real image URL; old CSV rows store a filename we can't render.
-    if g.image and g.image.startswith(("http://", "https://")):
-        embed.set_image(url=g.image)
-    embed.set_footer(text=f"id #{g.id}")
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send(embed=build_game_embed(g))
 
 
 # --- mutations (exec role only) ---------------------------------------------
@@ -474,9 +483,12 @@ def parse_money(raw: str | None) -> float | None:
     if raw is None or not raw.strip():
         return None
     try:
-        return float(raw.strip().lstrip("$"))
+        val = float(raw.strip().lstrip("$"))
     except ValueError:
         raise ValueError(f"'{raw.strip()}' isn't a price.")
+    if val < 0:
+        raise ValueError(f"'{raw.strip()}' can't be a negative price.")
+    return val
 
 
 async def _bgg_autofill(bgg_link: str) -> tuple[dict | None, str | None]:
@@ -882,6 +894,13 @@ async def game_add(
 
     await interaction.response.defer(ephemeral=True)
 
+    for name, val in (("price", price), ("sell_price", sell_price)):
+        if val is not None and val < 0:
+            await interaction.followup.send(
+                f"{name} can't be negative. Nothing was added.", ephemeral=True
+            )
+            return
+
     tag_list = parse_tags(tags)
     image = thumbnail = None
     # Pull details from BGG when a link is given; explicit args always win.
@@ -992,6 +1011,13 @@ async def game_edit(
         return
 
     await interaction.response.defer(ephemeral=True)
+
+    for name, val in (("price", price), ("sell_price", sell_price)):
+        if val is not None and val < 0:
+            await interaction.followup.send(
+                f"{name} can't be negative. Nothing was changed.", ephemeral=True
+            )
+            return
 
     # A changed link means the stored auto-filled details describe the old
     # game: re-fetch BGG and refresh them (explicit args above still win).
