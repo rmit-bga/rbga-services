@@ -329,6 +329,79 @@ def test_import_owners_upserts_by_name():
     assert (created, updated) == (0, 1)
 
 
+# --- price backfill importer -------------------------------------------------
+_PRICE_CSV = '''"Name","BGG Link","Purchase Value","Condition"
+"Bananagrams","https://boardgamegeek.com/boardgame/27225/bananagrams","22.95","Like New"
+"The Binding of Isaac: Four Souls ","","70","Like New"
+"Polyhedral Dice Set","","50","Fair"
+"Polyhedral Dice Set","","50","Fair"
+"Ghost Game","","15","Fair"
+'''
+
+
+def test_parse_prices_normalizes_title_and_dedupes():
+    from rbga.db.import_prices import parse_prices
+
+    prices, conflicts = parse_prices(_PRICE_CSV.splitlines(keepends=True))
+    assert conflicts == []
+    # Trailing space collapses so it matches the DB's stored title.
+    assert prices["the binding of isaac: four souls"] == 70.0
+    assert prices["bananagrams"] == 22.95
+    # Repeated title with the same price collapses to one entry.
+    assert prices["polyhedral dice set"] == 50.0
+
+
+def test_parse_prices_strips_bom_and_schema_blob():
+    from rbga.db.import_prices import parse_prices
+
+    blob = 'ListSchema={"schemaXmlList":["junk"]}\n'
+    lines = ("﻿" + blob + _PRICE_CSV).splitlines(keepends=True)
+    prices, _ = parse_prices(lines)
+    assert prices["bananagrams"] == 22.95
+
+
+def test_parse_prices_flags_conflicting_prices():
+    from rbga.db.import_prices import parse_prices
+
+    csv = '''"Name","Purchase Value"
+"Uno","7"
+"Uno","30"
+'''
+    prices, conflicts = parse_prices(csv.splitlines(keepends=True))
+    assert conflicts == ["Uno"]  # named, not crashed
+    assert "uno" not in prices  # ambiguous entry dropped, not guessed
+
+
+def test_apply_prices_fills_only_empty_and_reports_unmatched():
+    from rbga.db.import_prices import apply_prices, parse_prices
+
+    with SessionLocal() as db:
+        db.add_all([
+            BoardGame(title="Bananagrams", price=None),
+            BoardGame(title="The Binding of Isaac: Four Souls", price=99.0),  # already priced
+            BoardGame(title="Not In Csv", price=None),
+        ])
+        db.commit()
+
+    prices, _ = parse_prices(_PRICE_CSV.splitlines(keepends=True))
+
+    # Dry-run writes nothing.
+    dry = apply_prices(prices, dry_run=True)
+    with SessionLocal() as db:
+        assert db.scalar(select(BoardGame.price).where(BoardGame.title == "Bananagrams")) is None
+    assert "Bananagrams" in dry["filled"]
+
+    stats = apply_prices(prices)
+    with SessionLocal() as db:
+        by_title = {g.title: g.price for g in db.scalars(select(BoardGame)).all()}
+    assert by_title["Bananagrams"] == 22.95  # was NULL -> filled
+    assert by_title["The Binding of Isaac: Four Souls"] == 99.0  # already set -> untouched
+    assert by_title["Not In Csv"] is None  # no CSV price
+    assert "The Binding of Isaac: Four Souls" in stats["skipped_already_set"]
+    assert "Not In Csv" in stats["unmatched_db"]
+    assert "ghost game" in stats["unmatched_csv"]  # CSV price with no game
+
+
 def test_owner_contact_upsert_round_trip():
     bot_bg.set_owner_contact("Quan", "quan#1234")
     assert bot_bg.get_owner_contact("Quan") == "quan#1234"
