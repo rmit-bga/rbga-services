@@ -1,5 +1,5 @@
 """Board-game tags: storage round-trip, tag filter, BGG category parsing,
-the BGG enrichment pass, and the /game gallery rendering."""
+the BGG enrichment pass, and the /game list browse rendering."""
 import asyncio
 from typing import get_args
 
@@ -184,11 +184,12 @@ def test_gallery_page_embeds_slices_ten_per_page():
     assert bot_bg.gallery_page_embeds(games, 1)[0].title == "#11 G11"
 
 
-def test_gallery_view_button_states():
-    one_page = bot_bg.GalleryView([_game(id=1)])
+def test_browse_view_gallery_button_states():
+    one_page = bot_bg.BrowseView([_game(id=1)], mode="gallery")
     assert one_page.prev_btn.disabled and one_page.next_btn.disabled
 
-    many = bot_bg.GalleryView([_game(id=i) for i in range(1, 24)])
+    many = bot_bg.BrowseView([_game(id=i) for i in range(1, 24)], mode="gallery")
+    assert many.page_count == bot_bg.gallery_pages(23)  # 3 pages of 10 cards
     assert many.prev_btn.disabled and not many.next_btn.disabled
     many.page = 2  # last page of 23 games
     many._sync_buttons()
@@ -205,16 +206,101 @@ def test_list_pages_chunks_by_message_budget():
     assert all(f"`#{i}`" in joined for i in range(1, 61))
 
 
-def test_list_view_renders_header_and_buttons():
-    view = bot_bg.ListView(60, ["page one", "page two"])
+def test_browse_view_text_renders_header_and_buttons():
+    # Long titles force >1 text page so the pager engages.
+    games = [_game(id=i, title=f"Game {i} " + "x" * 60) for i in range(1, 61)]
+    view = bot_bg.BrowseView(games, mode="text")
+    assert view.page_count > 1
     assert view.prev_btn.disabled and not view.next_btn.disabled
     first = view.render()
-    assert first["content"].startswith("**60 game(s)**, page 1/2")
-    assert "page one" in first["content"]
-    view.page = 1
+    assert first["content"].startswith("**60 game(s)**, page 1/")
+    assert "`#1`" in first["content"]
+    assert first["embeds"] == []  # text mode clears any prior gallery cards
+    view.page = view.page_count - 1
     view._sync_buttons()
     assert not view.prev_btn.disabled and view.next_btn.disabled
-    assert "page two" in view.render()["content"]
+
+
+def test_browse_header_echoes_summary_and_hides_page_when_single():
+    # Single page: no ", page x/y"; the filter summary is still echoed.
+    view = bot_bg.BrowseView([_game(id=1)], summary=" — owner: Quan · [Like New]")
+    content = view.render()["content"]
+    assert content == "**1 game(s)** — owner: Quan · [Like New]\n" + view.text_pages[0]
+    assert "page" not in content
+
+
+def test_browse_view_toggle_swaps_mode_and_resets_page():
+    games = [_game(id=i, title=f"G{i}") for i in range(1, 24)]  # 23 short lines: 1 text page
+    view = bot_bg.BrowseView(games, mode="text")
+    assert view.mode == "text" and view.page_count == 1
+
+    press = _FakeInteraction()
+    asyncio.run(view.toggle_btn.callback(press))
+    assert view.mode == "gallery"
+    assert view.page == 0
+    assert view.page_count == bot_bg.gallery_pages(23)
+    assert view.toggle_btn.label == "📝 Text"
+    assert press.response.edited[-1]["embeds"]  # cards now rendered
+
+    press2 = _FakeInteraction()
+    asyncio.run(view.toggle_btn.callback(press2))
+    assert view.mode == "text"
+    assert view.toggle_btn.label == "🖼 Gallery"
+    assert press2.response.edited[-1]["embeds"] == []
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected",
+    [
+        ({}, []),
+        ({"sort": "Title"}, []),  # default sort is not echoed
+        (
+            {"search": "coop", "owner": "Quan", "condition": "Like New",
+             "tag": "Party", "location": "City", "sort": "ID"},
+            ['search: "coop"', "owner: Quan", "[Like New]", "tag: Party", "@ City", "sorted by ID"],
+        ),
+    ],
+)
+def test_active_filters_echo(kwargs, expected):
+    call = {"search": None, "owner": None, "condition": None, "tag": None,
+            "location": None, "sort": "Title", **kwargs}
+    assert bot_bg._active_filters(**call) == expected
+
+
+def _insert_full(title, **fields) -> int:
+    with SessionLocal() as db:
+        g = BoardGame(title=title, **fields)
+        db.add(g)
+        db.commit()
+        return g.id
+
+
+def test_query_games_search_spans_more_than_title():
+    _insert_full("Catan", publisher="Kosmos")
+    _insert_full("Azul", owner="Quan")
+    _insert_full("Wingspan", notes="a bird engine-builder")
+    _insert_full("Root", tags=["Woodland"])
+    _insert_full("Uno")  # matches none of the terms below
+
+    def titles(term):
+        return sorted(g.title for g in bot_bg._query_games(None, None, term, None, None))
+
+    assert titles("kosmos") == ["Catan"]      # publisher
+    assert titles("quan") == ["Azul"]         # owner
+    assert titles("engine") == ["Wingspan"]   # notes
+    assert titles("woodland") == ["Root"]     # tag
+    assert titles("zzz") == []
+
+
+def test_query_games_sort_by_id_desc():
+    a = _insert_full("Alpha")
+    b = _insert_full("Bravo")
+    c = _insert_full("Charlie")
+    ids = [g.id for g in bot_bg._query_games(None, None, None, None, None, "ID")]
+    assert ids == [c, b, a]  # newest id first
+    # Default sort stays alphabetical by title.
+    titles = [g.title for g in bot_bg._query_games(None, None, None, None, None)]
+    assert titles == ["Alpha", "Bravo", "Charlie"]
 
 
 def test_export_csv_round_trips():

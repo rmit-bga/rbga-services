@@ -127,26 +127,48 @@ async def location_autocomplete(
 
 # --- read (open to everyone) ------------------------------------------------
 
+# Sort choices for /game list, mapped to an order_by column. Title is the
+# default (alphabetical, as it always was); ID desc surfaces newest-added first.
+_SORTS = {
+    "Title": BoardGame.title,
+    "ID": BoardGame.id.desc(),
+    "Owner": BoardGame.owner,
+    "Condition": BoardGame.condition,
+}
+
+
 def _query_games(
     owner: str | None,
     condition: str | None,
     search: str | None,
     tag: str | None,
     location: str | None = None,
+    sort: str = "Title",
 ) -> list[BoardGame]:
-    """Shared filter query for /game list and /game gallery (runs in a thread)."""
+    """Shared filter query for /game list and /game export (runs in a thread).
+
+    `search` is a case-insensitive substring match across the title, publisher,
+    owner, notes, and tags (filtered in Python — the inventory is small — so it
+    can span the JSON tags column uniformly)."""
     with SessionLocal() as db:
         stmt = select(BoardGame)
         if owner:
             stmt = stmt.where(BoardGame.owner == owner)
         if condition:
             stmt = stmt.where(BoardGame.condition == condition)
-        if search:
-            stmt = stmt.where(BoardGame.title.ilike(f"%{search}%"))
         if location:
             # Case-insensitive so it's robust against any pre-canonicalization dupes.
             stmt = stmt.where(func.lower(BoardGame.location) == location.lower())
-        games = list(db.scalars(stmt.order_by(BoardGame.title)).all())
+        order = _SORTS.get(sort, BoardGame.title)
+        games = list(db.scalars(stmt.order_by(order)).all())
+    if search:
+        q = search.casefold()
+        def _hit(g: BoardGame) -> bool:
+            fields = (g.title, g.publisher, g.owner, g.notes)
+            if any(f and q in f.casefold() for f in fields):
+                return True
+            return any(q in t.casefold() for t in (g.tags or []))
+        games = [g for g in games if _hit(g)]
     if tag:
         # JSON column, so filter in Python (portable; the inventory is small).
         wanted = tag.casefold()
@@ -154,13 +176,44 @@ def _query_games(
     return games
 
 
+Sort = Literal["Title", "ID", "Owner", "Condition"]
+
+
+def _active_filters(
+    search: str | None,
+    owner: str | None,
+    condition: str | None,
+    tag: str | None,
+    location: str | None,
+    sort: str = "Title",
+) -> list[str]:
+    """Human-readable fragments describing the filters/sort in effect, for
+    echoing back in the result header and empty state. Empty when the default
+    unfiltered list was requested."""
+    parts: list[str] = []
+    if search:
+        parts.append(f'search: "{search}"')
+    if owner:
+        parts.append(f"owner: {owner}")
+    if condition:
+        parts.append(f"[{condition}]")
+    if tag:
+        parts.append(f"tag: {tag}")
+    if location:
+        parts.append(f"@ {location}")
+    if sort and sort != "Title":
+        parts.append(f"sorted by {sort}")
+    return parts
+
+
 @game.command(name="list", description="List board games, optionally filtered")
 @app_commands.describe(
     owner="Only show games owned by this person/RBGA",
     condition="Only show games in this condition",
-    search="Only show games whose title contains this text",
+    search="Match games by title, publisher, owner, notes or tag",
     tag="Only show games with this tag",
     location="Only show games stored at this location",
+    sort="Order the results (default: Title A-Z)",
 )
 @app_commands.autocomplete(owner=owner_autocomplete, location=location_autocomplete)
 async def game_list(
@@ -170,20 +223,27 @@ async def game_list(
     search: str | None = None,
     tag: str | None = None,
     location: str | None = None,
+    sort: Sort = "Title",
 ):
     await interaction.response.defer()
 
-    games = await _in_thread(lambda: _query_games(owner, condition, search, tag, location))
+    games = await _in_thread(lambda: _query_games(owner, condition, search, tag, location, sort))
+    parts = _active_filters(search, owner, condition, tag, location, sort)
     if not games:
-        await interaction.followup.send("No board games match that.")
+        detail = ", ".join(parts) if parts else None
+        await interaction.followup.send(
+            f"No games match {detail}." if detail else "No board games found."
+        )
         return
 
-    pages = list_pages(games)
-    if len(pages) == 1:
-        await interaction.followup.send(f"**{len(games)} game(s)**\n" + pages[0])
-        return
-    view = ListView(len(games), pages)
+    view = BrowseView(games, _summary_suffix(parts))
     view.message = await interaction.followup.send(view=view, **view.render())
+
+
+def _summary_suffix(parts: list[str]) -> str:
+    """The ` — a · b · c` header suffix for a set of active-filter fragments
+    (empty string when there are none)."""
+    return " — " + " · ".join(parts) if parts else ""
 
 
 def _game_line(g: BoardGame) -> str:
@@ -255,8 +315,9 @@ def gallery_page_embeds(games: list[BoardGame], page: int) -> list[discord.Embed
     return [game_card(g) for g in games[start : start + GALLERY_PAGE]]
 
 
-def _gallery_header(total: int, page: int) -> str:
-    return f"**{total} game(s)**, page {page + 1}/{gallery_pages(total)}"
+def _browse_header(total: int, summary: str, page: int, page_count: int) -> str:
+    header = f"**{total} game(s)**{summary}"
+    return f"{header}, page {page + 1}/{page_count}" if page_count > 1 else header
 
 
 class _Pager(discord.ui.View):
@@ -302,59 +363,37 @@ class _Pager(discord.ui.View):
                 pass  # message may have been deleted
 
 
-class GalleryView(_Pager):
-    """Pager rendering embed cards with images."""
+class BrowseView(_Pager):
+    """One pager for both views of a game list: a compact text list and image
+    cards. A toggle button flips `mode` between "text" and "gallery"; each mode
+    has its own page count (text pages are char-budgeted, gallery is 10 cards
+    per page), so toggling resets to page 0. `summary` is the ` — filter · …`
+    header suffix echoing the active filters."""
 
-    def __init__(self, games: list[BoardGame]) -> None:
+    def __init__(self, games: list[BoardGame], summary: str = "", mode: str = "text") -> None:
         self.games = games
-        super().__init__(gallery_pages(len(games)))
+        self.summary = summary
+        self.mode = mode
+        self.text_pages = list_pages(games)
+        super().__init__(self._page_count())
+
+    def _page_count(self) -> int:
+        return len(self.text_pages) if self.mode == "text" else gallery_pages(len(self.games))
 
     def render(self) -> dict:
-        return {
-            "content": _gallery_header(len(self.games), self.page),
-            "embeds": gallery_page_embeds(self.games, self.page),
-        }
+        header = _browse_header(len(self.games), self.summary, self.page, self.page_count)
+        if self.mode == "text":
+            # embeds=[] clears any cards left over from a prior gallery view.
+            return {"content": header + "\n" + self.text_pages[self.page], "embeds": []}
+        return {"content": header, "embeds": gallery_page_embeds(self.games, self.page)}
 
-
-class ListView(_Pager):
-    """Pager rendering the compact text list."""
-
-    def __init__(self, total: int, pages: list[str]) -> None:
-        self.total = total
-        self.text_pages = pages
-        super().__init__(len(pages))
-
-    def render(self) -> dict:
-        header = f"**{self.total} game(s)**, page {self.page + 1}/{self.page_count}"
-        return {"content": header + "\n" + self.text_pages[self.page]}
-
-
-@game.command(name="gallery", description="Browse games as image cards, 10 per page")
-@app_commands.describe(
-    owner="Only show games owned by this person/RBGA",
-    condition="Only show games in this condition",
-    search="Only show games whose title contains this text",
-    tag="Only show games with this tag",
-    location="Only show games stored at this location",
-)
-@app_commands.autocomplete(owner=owner_autocomplete, location=location_autocomplete)
-async def game_gallery(
-    interaction: discord.Interaction,
-    owner: str | None = None,
-    condition: Condition | None = None,
-    search: str | None = None,
-    tag: str | None = None,
-    location: str | None = None,
-):
-    await interaction.response.defer()
-
-    games = await _in_thread(lambda: _query_games(owner, condition, search, tag, location))
-    if not games:
-        await interaction.followup.send("No board games match that.")
-        return
-
-    view = GalleryView(games)
-    view.message = await interaction.followup.send(view=view, **view.render())
+    @discord.ui.button(label="🖼 Gallery", style=discord.ButtonStyle.secondary)
+    async def toggle_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.mode = "gallery" if self.mode == "text" else "text"
+        button.label = "📝 Text" if self.mode == "gallery" else "🖼 Gallery"
+        self.page = 0
+        self.page_count = self._page_count()
+        await self._show(interaction)
 
 
 # --- export (the whole inventory in one file) ---------------------------------
