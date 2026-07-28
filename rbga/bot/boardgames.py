@@ -241,9 +241,9 @@ async def game_list(
 
 
 def _summary_suffix(parts: list[str]) -> str:
-    """The ` — a · b · c` header suffix for a set of active-filter fragments
+    """The ` · a · b · c` header suffix for a set of active-filter fragments
     (empty string when there are none)."""
-    return " — " + " · ".join(parts) if parts else ""
+    return " · " + " · ".join(parts) if parts else ""
 
 
 def _game_line(g: BoardGame) -> str:
@@ -367,7 +367,7 @@ class BrowseView(_Pager):
     """One pager for both views of a game list: a compact text list and image
     cards. A toggle button flips `mode` between "text" and "gallery"; each mode
     has its own page count (text pages are char-budgeted, gallery is 10 cards
-    per page), so toggling resets to page 0. `summary` is the ` — filter · …`
+    per page), so toggling resets to page 0. `summary` is the ` · filter · …`
     header suffix echoing the active filters."""
 
     def __init__(self, games: list[BoardGame], summary: str = "", mode: str = "text") -> None:

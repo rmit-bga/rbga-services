@@ -223,9 +223,9 @@ def test_browse_view_text_renders_header_and_buttons():
 
 def test_browse_header_echoes_summary_and_hides_page_when_single():
     # Single page: no ", page x/y"; the filter summary is still echoed.
-    view = bot_bg.BrowseView([_game(id=1)], summary=" — owner: Quan · [Like New]")
+    view = bot_bg.BrowseView([_game(id=1)], summary=" · owner: Quan · [Like New]")
     content = view.render()["content"]
-    assert content == "**1 game(s)** — owner: Quan · [Like New]\n" + view.text_pages[0]
+    assert content == "**1 game(s)** · owner: Quan · [Like New]\n" + view.text_pages[0]
     assert "page" not in content
 
 
