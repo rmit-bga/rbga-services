@@ -253,17 +253,19 @@ def test_browse_view_toggle_swaps_mode_and_resets_page():
     "kwargs,expected",
     [
         ({}, []),
-        ({"sort": "Title"}, []),  # default sort is not echoed
+        ({"sort": "Title"}, []),  # default field + direction: not echoed
+        ({"direction": "Descending"}, ["sorted by Title ↓"]),  # direction alone shows
+        ({"sort": "ID"}, ["sorted by ID ↑"]),  # non-default field shows its direction
         (
             {"search": "coop", "owner": "Quan", "condition": "Like New",
-             "tag": "Party", "location": "City", "sort": "ID"},
-            ['search: "coop"', "owner: Quan", "[Like New]", "tag: Party", "@ City", "sorted by ID"],
+             "tag": "Party", "location": "City", "sort": "ID", "direction": "Descending"},
+            ['search: "coop"', "owner: Quan", "[Like New]", "tag: Party", "@ City", "sorted by ID ↓"],
         ),
     ],
 )
 def test_active_filters_echo(kwargs, expected):
     call = {"search": None, "owner": None, "condition": None, "tag": None,
-            "location": None, "sort": "Title", **kwargs}
+            "location": None, "sort": "Title", "direction": "Ascending", **kwargs}
     assert bot_bg._active_filters(**call) == expected
 
 
@@ -292,15 +294,20 @@ def test_query_games_search_spans_more_than_title():
     assert titles("zzz") == []
 
 
-def test_query_games_sort_by_id_desc():
+def test_query_games_sort_field_and_direction():
     a = _insert_full("Alpha")
     b = _insert_full("Bravo")
     c = _insert_full("Charlie")
-    ids = [g.id for g in bot_bg._query_games(None, None, None, None, None, "ID")]
-    assert ids == [c, b, a]  # newest id first
-    # Default sort stays alphabetical by title.
+    # ID ascending (the default direction) is oldest-first; descending flips it.
+    asc = [g.id for g in bot_bg._query_games(None, None, None, None, None, "ID")]
+    assert asc == [a, b, c]
+    desc = [g.id for g in bot_bg._query_games(None, None, None, None, None, "ID", "Descending")]
+    assert desc == [c, b, a]
+    # Default sort stays alphabetical by title; descending reverses it.
     titles = [g.title for g in bot_bg._query_games(None, None, None, None, None)]
     assert titles == ["Alpha", "Bravo", "Charlie"]
+    z_a = [g.title for g in bot_bg._query_games(None, None, None, None, None, "Title", "Descending")]
+    assert z_a == ["Charlie", "Bravo", "Alpha"]
 
 
 def test_export_csv_round_trips():

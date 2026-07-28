@@ -127,11 +127,12 @@ async def location_autocomplete(
 
 # --- read (open to everyone) ------------------------------------------------
 
-# Sort choices for /game list, mapped to an order_by column. Title is the
-# default (alphabetical, as it always was); ID desc surfaces newest-added first.
+# Sort fields for /game list, mapped to an order_by column. Title is the
+# default; `direction` (below) chooses ascending vs descending, e.g. sort by
+# ID descending surfaces newest-added first.
 _SORTS = {
     "Title": BoardGame.title,
-    "ID": BoardGame.id.desc(),
+    "ID": BoardGame.id,
     "Owner": BoardGame.owner,
     "Condition": BoardGame.condition,
 }
@@ -144,6 +145,7 @@ def _query_games(
     tag: str | None,
     location: str | None = None,
     sort: str = "Title",
+    direction: str = "Ascending",
 ) -> list[BoardGame]:
     """Shared filter query for /game list and /game export (runs in a thread).
 
@@ -159,7 +161,8 @@ def _query_games(
         if location:
             # Case-insensitive so it's robust against any pre-canonicalization dupes.
             stmt = stmt.where(func.lower(BoardGame.location) == location.lower())
-        order = _SORTS.get(sort, BoardGame.title)
+        col = _SORTS.get(sort, BoardGame.title)
+        order = col.desc() if direction == "Descending" else col.asc()
         games = list(db.scalars(stmt.order_by(order)).all())
     if search:
         q = search.casefold()
@@ -177,6 +180,7 @@ def _query_games(
 
 
 Sort = Literal["Title", "ID", "Owner", "Condition"]
+Direction = Literal["Ascending", "Descending"]
 
 
 def _active_filters(
@@ -186,6 +190,7 @@ def _active_filters(
     tag: str | None,
     location: str | None,
     sort: str = "Title",
+    direction: str = "Ascending",
 ) -> list[str]:
     """Human-readable fragments describing the filters/sort in effect, for
     echoing back in the result header and empty state. Empty when the default
@@ -201,8 +206,9 @@ def _active_filters(
         parts.append(f"tag: {tag}")
     if location:
         parts.append(f"@ {location}")
-    if sort and sort != "Title":
-        parts.append(f"sorted by {sort}")
+    if (sort and sort != "Title") or direction == "Descending":
+        arrow = "↓" if direction == "Descending" else "↑"
+        parts.append(f"sorted by {sort} {arrow}")
     return parts
 
 
@@ -213,7 +219,8 @@ def _active_filters(
     search="Match games by title, publisher, owner, notes or tag",
     tag="Only show games with this tag",
     location="Only show games stored at this location",
-    sort="Order the results (default: Title A-Z)",
+    sort="Field to order by (default: Title)",
+    direction="Ascending or descending (default: Ascending)",
 )
 @app_commands.autocomplete(owner=owner_autocomplete, location=location_autocomplete)
 async def game_list(
@@ -224,11 +231,14 @@ async def game_list(
     tag: str | None = None,
     location: str | None = None,
     sort: Sort = "Title",
+    direction: Direction = "Ascending",
 ):
     await interaction.response.defer()
 
-    games = await _in_thread(lambda: _query_games(owner, condition, search, tag, location, sort))
-    parts = _active_filters(search, owner, condition, tag, location, sort)
+    games = await _in_thread(
+        lambda: _query_games(owner, condition, search, tag, location, sort, direction)
+    )
+    parts = _active_filters(search, owner, condition, tag, location, sort, direction)
     if not games:
         detail = ", ".join(parts) if parts else None
         await interaction.followup.send(
