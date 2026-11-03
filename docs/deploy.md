@@ -10,11 +10,17 @@ One compose stack per host, in a dedicated directory (e.g. `~/servers/rbga/`):
 
 1. Clone (or let CI bootstrap) the repo into the deploy directory.
 2. `cp .env.example .env` and fill it in. `.env` is gitignored; never commit it.
-3. `docker compose up -d --build`.
+3. `docker compose pull && docker compose --profile caddy up -d` (drop
+   `--profile caddy` on a host that uses a Cloudflare tunnel instead). This
+   pulls the CI-built image from GHCR. Don't use `--build` on a small VM: a
+   Docker build can exhaust its memory and freeze it.
+4. Install the cron jobs: the complaints purge and the database backup (both
+   below).
 
-Pushes to `main` auto-deploy via `.github/workflows/ci-cd.yml`: a hosted runner
-verifies the image builds, then a **self-hosted runner on the box** resets the
-deploy checkout to `origin/main`, runs `alembic upgrade head`, and rebuilds. The
+Pushes to `main` auto-deploy via `.github/workflows/ci-cd.yml`: the tests run,
+a hosted runner builds the image and pushes it to GHCR, then a **self-hosted
+runner on the box** resets the deploy checkout to `origin/main`, pulls the
+image, runs `alembic upgrade head`, and restarts the stack. The
 API publishes on host port `30010`; the DB has no host port; the bot needs none.
 
 ## Public HTTPS
@@ -82,3 +88,14 @@ the box is down on 1 January.
 `COMPLAINTS_RETENTION_YEARS` (currently 1, i.e. a closed complaint is deleted
 at the first new year after it closes) is the exec's number; change it by
 editing the one env var.
+
+## Database backup
+
+`scripts/backup-db.sh` writes a nightly `pg_dump` to `~/backups/rbga/` and keeps
+14 days. Cron on the deploy host, scheduled before the 3 am purge:
+
+```bash
+30 2 * * * ~/servers/rbga/scripts/backup-db.sh >> ~/servers/rbga/backup.log 2>&1
+```
+
+Restoring, and copying dumps off the box: `docs/operations.md`.
