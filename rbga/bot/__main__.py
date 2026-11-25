@@ -236,7 +236,7 @@ async def on_app_command_error(
 
 
 boardgames.setup(tree)  # register the /game command group
-complaints.setup(client, tree)  # complaint-action buttons + /complaints-setup
+# complaints.setup(client, tree)  # complaint-action buttons + /complaints-setup
 
 
 @client.event
